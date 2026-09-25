@@ -1,0 +1,1361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>Mandy's Store - EVILGAME</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
+    background: #0a0610;
+    color: #c8f0c0;
+    font-family: 'Press Start 2P', monospace;
+    overflow: hidden;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px;
+    padding:
+      max(8px, env(safe-area-inset-top, 0px))
+      max(8px, env(safe-area-inset-right, 0px))
+      max(8px, env(safe-area-inset-bottom, 0px))
+      max(8px, env(safe-area-inset-left, 0px));
+  }
+  .hud {
+    width: min(720px, 96vw);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px 10px;
+    font-size: clamp(7px, 2.1vw, 10px);
+    line-height: 1.45;
+    color: #7cff9a;
+  }
+  @media (max-width: 420px) {
+    .hud { gap: 4px 8px; font-size: 7px; }
+    .bar { gap: 6px; }
+    a.back, button.reset { padding: 6px 8px; font-size: 7px; }
+    #msg { min-height: 2.6em; font-size: 7px; }
+    body { gap: 6px; }
+  }
+  .hud span { color: #c8f0c0; }
+  .hud .nick {
+    font: inherit;
+    color: #ffe08a;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    max-width: 42vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hud .nick:hover { color: #7cff9a; }
+  .hud .nick:focus { outline: 1px dashed #7cff9a; outline-offset: 2px; }
+  #wrap {
+    position: relative;
+    width: min(720px, 96vw);
+    aspect-ratio: 4 / 3;
+    max-height: min(70vh, 70dvh, 540px);
+    border: 4px solid #3a3550;
+    box-shadow: 0 0 0 4px #1a1528, 0 0 40px rgba(80, 255, 120, 0.12);
+    background: #1a1410;
+    flex: 0 1 auto;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    cursor: grab;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  canvas.dragging { cursor: grabbing; }
+  #msg {
+    width: min(720px, 96vw);
+    min-height: 3.2em;
+    font-size: clamp(8px, 2.2vw, 10px);
+    line-height: 1.6;
+    text-align: center;
+    color: #ffe08a;
+  }
+  .bar {
+    width: min(720px, 96vw);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  a.back, button.reset {
+    font-family: inherit;
+    font-size: 8px;
+    color: #6a8870;
+    text-decoration: none;
+    background: transparent;
+    border: 2px solid #3a3550;
+    padding: 8px 10px;
+    cursor: pointer;
+  }
+  a.back:hover, button.reset:hover { color: #7cff9a; border-color: #7cff9a; }
+  #fanfare {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 20;
+    background: rgba(0, 0, 0, 0.4);
+  }
+  #fanfare.on { display: flex; }
+  #fanfare .burst {
+    text-align: center;
+    animation: crow-pop 1.8s ease-out forwards;
+  }
+  #fanfare .word {
+    font-size: clamp(14px, 4.5vw, 22px);
+    color: #ffe08a;
+    text-shadow: 3px 3px 0 #1a0610, -2px -2px 0 #ff2d55;
+    letter-spacing: 1px;
+    line-height: 1.8;
+  }
+  @keyframes crow-pop {
+    0%   { transform: scale(0.4) rotate(-6deg); opacity: 0; }
+    15%  { transform: scale(1.12) rotate(2deg); opacity: 1; }
+    70%  { transform: scale(1) rotate(0deg); opacity: 1; }
+    100% { transform: scale(1.1) rotate(0deg); opacity: 0; }
+  }
+</style>
+</head>
+<body>
+  <div class="hud">
+    <button type="button" class="nick" id="nick" title="Tap to rename">MANDY</button>
+    <div>SCORE <span id="score">0</span></div>
+    <div>HIGH <span id="high">0</span></div>
+    <div>LVL <span id="lvl">1</span></div>
+    <div>CATS <span id="cats">1</span></div>
+  </div>
+  <div id="wrap">
+    <canvas id="c" width="640" height="480"></canvas>
+    <div id="fanfare" aria-hidden="true"><div class="burst"><div class="word">RONNIE!!!<br>COCK-A-DOODLE-DOO</div></div></div>
+  </div>
+  <div id="msg">Drag Mandy. Push those cats out the FRONT DOOR.</div>
+  <div class="bar">
+    <a class="back" href="index.html">&lt;- PROGRAM MENU</a>
+    <button type="button" class="reset" id="reset">RESET</button>
+  </div>
+<script>
+(function () {
+  var W = 640, H = 480;
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d', { alpha: false });
+  var viewDpr = 1;
+
+  function resizeCanvas() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (dpr < 1) dpr = 1;
+    viewDpr = dpr;
+    var bw = Math.round(W * dpr);
+    var bh = Math.round(H * dpr);
+    if (canvas.width !== bw || canvas.height !== bh) {
+      canvas.width = bw;
+      canvas.height = bh;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  var elNick = document.getElementById('nick');
+  var elScore = document.getElementById('score');
+  var elHigh = document.getElementById('high');
+  var elLvl = document.getElementById('lvl');
+  var elCats = document.getElementById('cats');
+  var elMsg = document.getElementById('msg');
+  var elFanfare = document.getElementById('fanfare');
+
+  var STORE_KEY = 'evilgame.farm.v1';
+  var NICK_ADJ = [
+    'Barn', 'Hay', 'Crispy', 'Muddy', 'Spicy', 'Pixel', 'Cursed', 'Moist',
+    'Dusty', 'Greasy', 'Chunky', 'Farm', 'Soggy', 'Forbidden', 'Clucky'
+  ];
+  var NICK_NOUN = [
+    'Mandy', 'Goose', 'Pickle', 'Goblin', 'Nugget', 'Gremlin', 'Himbo',
+    'Lord', 'Dumpling', 'Raccoon', 'Meatball', 'Wraith', 'Scooter', 'Hen'
+  ];
+
+  function sillyNick() {
+    var a = NICK_ADJ[Math.floor(Math.random() * NICK_ADJ.length)];
+    var n = NICK_NOUN[Math.floor(Math.random() * NICK_NOUN.length)];
+    var num = 10 + Math.floor(Math.random() * 90);
+    return a + n + num;
+  }
+
+  function defaultProfile() {
+    return { nick: sillyNick(), highScore: 0 };
+  }
+
+  function loadProfile() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return defaultProfile();
+      var o = JSON.parse(raw);
+      var out = defaultProfile();
+      if (o && typeof o.nick === 'string' && o.nick.trim()) {
+        out.nick = String(o.nick).trim().slice(0, 18);
+      }
+      if (o && typeof o.highScore === 'number' && isFinite(o.highScore) && o.highScore > 0) {
+        out.highScore = Math.min(999999, Math.floor(o.highScore));
+      }
+      return out;
+    } catch (e1) {
+      return defaultProfile();
+    }
+  }
+
+  function saveProfile() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        nick: profile.nick,
+        highScore: profile.highScore
+      }));
+    } catch (e1) {}
+  }
+
+  var profile = loadProfile();
+  saveProfile();
+
+  // Front door on the RIGHT wall (clearly marked).
+  var DOOR = { x: W - 22, y: H / 2 - 55, w: 18, h: 110, cx: W - 13, cy: H / 2 };
+  var WALL = 18;
+  var TOP_BAR = 36;
+
+  var CAT_COLORS = [
+    { body: '#e8a060', belly: '#f0d0a0', ear: '#d08050' },
+    { body: '#c8c8d0', belly: '#f0f0f4', ear: '#a8a8b0' },
+    { body: '#6a5040', belly: '#c8a888', ear: '#503828' },
+    { body: '#f0e8a0', belly: '#fff8d0', ear: '#d0c070' },
+    { body: '#9080a0', belly: '#d0c8d8', ear: '#706080' }
+  ];
+
+  var EXIT_LINES = [
+    'SCOOT, KITTY!',
+    'OUT YOU GO!',
+    'FRONT DOOR SERVICE!',
+    'NO LOITERING IN THE STORE!',
+    'SHIP THE CAT!',
+    'MANDY CLEARS THE AISLE!'
+  ];
+
+  var state = {
+    score: 0,
+    level: 1,
+    catsNeeded: 1,
+    cats: [],
+    player: { x: W * 0.35, y: H / 2, r: 16 },
+    dragging: false,
+    dragOff: { x: 0, y: 0 },
+    recenterDrag: false,
+    mode: 'play', // play | ronnie_intro | ronnie_chase | soft_reset
+    modeT: 0,
+    ronnie: null,
+    lastRonnieAt: 0,
+    _dt: 1 / 60,
+    shelves: []
+  };
+
+  function say(text) {
+    elMsg.textContent = text;
+  }
+
+  function dist(ax, ay, bx, by) {
+    var dx = ax - bx, dy = ay - by;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function bumpHighIfNeeded() {
+    if (state.score > profile.highScore) {
+      profile.highScore = state.score;
+      saveProfile();
+    }
+  }
+
+  function hud() {
+    elNick.textContent = profile.nick;
+    elScore.textContent = String(state.score);
+    elHigh.textContent = String(profile.highScore);
+    elLvl.textContent = String(state.level);
+    elCats.textContent = String(state.catsNeeded);
+  }
+
+  function renameNick() {
+    var cur = profile.nick;
+    var next = window.prompt('New silly nickname (score stays):', cur);
+    if (next == null) return;
+    next = String(next).trim().replace(/\s+/g, ' ').slice(0, 18);
+    if (!next) return;
+    profile.nick = next;
+    saveProfile();
+    hud();
+    say(profile.nick + ' RUNS THE STORE.');
+  }
+
+  function buildShelves() {
+    // Decorative aisle props - soft collision only for cats/player.
+    state.shelves = [
+      { x: 90, y: 90, w: 70, h: 36, label: 'FEED' },
+      { x: 220, y: 90, w: 70, h: 36, label: 'HAY' },
+      { x: 350, y: 90, w: 70, h: 36, label: 'EGGS' },
+      { x: 90, y: H - 100, w: 70, h: 36, label: 'MILK' },
+      { x: 220, y: H - 100, w: 70, h: 36, label: 'SEED' },
+      { x: 350, y: H - 100, w: 70, h: 36, label: 'JAM' },
+      { x: 480, y: 160, w: 40, h: 70, label: '' },
+      { x: 480, y: 280, w: 40, h: 70, label: '' }
+    ];
+  }
+
+  function spawnCats(n) {
+    var cats = [];
+    var tries = 0;
+    while (cats.length < n && tries < 200) {
+      tries += 1;
+      var x = 70 + Math.random() * (W - 200);
+      var y = 70 + Math.random() * (H - 140);
+      var ok = dist(x, y, state.player.x, state.player.y) > 90;
+      for (var i = 0; i < cats.length && ok; i++) {
+        if (dist(x, y, cats[i].x, cats[i].y) < 44) ok = false;
+      }
+      // Keep clear of door mouth
+      if (dist(x, y, DOOR.cx, DOOR.cy) < 80) ok = false;
+      if (!ok) continue;
+      var col = CAT_COLORS[cats.length % CAT_COLORS.length];
+      cats.push({
+        x: x,
+        y: y,
+        r: 12,
+        vx: (Math.random() - 0.5) * 0.6,
+        vy: (Math.random() - 0.5) * 0.6,
+        color: col,
+        meowCd: 0,
+        wobble: Math.random() * Math.PI * 2,
+        exiting: false,
+        exitT: 0
+      });
+    }
+    while (cats.length < n) {
+      cats.push({
+        x: 100 + cats.length * 40,
+        y: 140 + (cats.length % 3) * 60,
+        r: 12,
+        vx: 0.2,
+        vy: 0.1,
+        color: CAT_COLORS[cats.length % CAT_COLORS.length],
+        meowCd: 0,
+        wobble: 0,
+        exiting: false,
+        exitT: 0
+      });
+    }
+    state.cats = cats;
+  }
+
+  function startLevel(keepScore) {
+    if (!keepScore) {
+      state.score = 0;
+      state.lastRonnieAt = 0;
+    }
+    state.mode = 'play';
+    state.modeT = 0;
+    state.ronnie = null;
+    state.player.x = W * 0.32;
+    state.player.y = H / 2;
+    state.recenterDrag = true;
+    state.dragging = false;
+    spawnCats(state.catsNeeded);
+    hud();
+  }
+
+  function resetAll() {
+    state.level = 1;
+    state.catsNeeded = 1;
+    state.lastRonnieAt = 0;
+    startLevel(false);
+    say('Drag Mandy. Push those cats out the FRONT DOOR.');
+  }
+
+  function softResetKeepScore() {
+    // After Ronnie chase: cats back to 1, Mandy inside, score stays.
+    state.level = 1;
+    state.catsNeeded = 1;
+    startLevel(true);
+    say('RONNIE WINS THIS ROUND. SCORE STAYS. BACK TO WORK, MANDY.');
+  }
+
+  function catExited(cat) {
+    if (cat.exiting) return;
+    cat.exiting = true;
+    cat.exitT = 0;
+    state.score += 1;
+    bumpHighIfNeeded();
+    hud();
+    var line = EXIT_LINES[Math.floor(Math.random() * EXIT_LINES.length)];
+    say(line + ' (+1)');
+
+    // Check Ronnie trigger on multiples of 10
+    maybeTriggerRonnie();
+  }
+
+  function maybeTriggerRonnie() {
+    if (state.mode !== 'play') return;
+    if (state.score <= 0) return;
+    if (state.score % 10 !== 0) return;
+    if (state.score <= state.lastRonnieAt) return;
+    beginRonnie();
+  }
+
+  function beginRonnie() {
+    state.lastRonnieAt = state.score;
+    state.mode = 'ronnie_intro';
+    state.modeT = 0;
+    state.ronnie = {
+      x: -40,
+      y: H / 2,
+      r: 22,
+      vx: 0,
+      vy: 0
+    };
+    state.dragging = false;
+    playCockadoodle();
+    showFanfare();
+    say('COCK-A-DOODLE-DOO! RONNIE THE ROOSTER ENTERS!');
+  }
+
+  var fanfareTimer = null;
+  function showFanfare() {
+    if (!elFanfare) return;
+    elFanfare.classList.remove('on');
+    void elFanfare.offsetWidth;
+    elFanfare.classList.add('on');
+    elFanfare.setAttribute('aria-hidden', 'false');
+    if (fanfareTimer) clearTimeout(fanfareTimer);
+    fanfareTimer = setTimeout(function () {
+      elFanfare.classList.remove('on');
+      elFanfare.setAttribute('aria-hidden', 'true');
+      fanfareTimer = null;
+    }, 1800);
+  }
+
+  function levelCleared() {
+    // All cats gone - bump difficulty
+    state.level += 1;
+    state.catsNeeded += 1;
+    startLevel(true);
+    say('LEVEL ' + state.level + '! ' + state.catsNeeded + ' CATS IN THE STORE!');
+  }
+
+  // --- Audio ---
+  var audioCtx = null;
+  var audioUnlocked = false;
+  var sfxEls = {};
+  var currentSfx = null;
+  var voicePriority = false;
+
+  var MEOW_URLS = ['sfx/meow1.wav', 'sfx/meow2.wav', 'sfx/meow3.wav'];
+  var ALL_SFX_URLS = MEOW_URLS.concat(['sfx/cockadoodle.wav']);
+
+  function ensureAudio() {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      if (!audioCtx) audioCtx = new AC();
+      if (audioCtx.state === 'suspended') {
+        try { audioCtx.resume(); } catch (e1) {}
+      }
+      return audioCtx;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function getSfxEl(url) {
+    if (!sfxEls[url]) {
+      var a = new Audio();
+      a.preload = 'auto';
+      a.src = url;
+      try { a.setAttribute('playsinline', ''); a.playsInline = true; } catch (e1) {}
+      try { a.load(); } catch (e2) {}
+      sfxEls[url] = a;
+    }
+    return sfxEls[url];
+  }
+
+  function unlockAudio() {
+    var ctx = ensureAudio();
+    if (ctx) {
+      try {
+        var o = ctx.createOscillator();
+        var g = ctx.createGain();
+        g.gain.value = 0.0001;
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start(0);
+        o.stop(ctx.currentTime + 0.04);
+      } catch (e1) {}
+      try { ctx.resume(); } catch (e2) {}
+    }
+    var i, a, p;
+    for (i = 0; i < ALL_SFX_URLS.length; i++) {
+      a = getSfxEl(ALL_SFX_URLS[i]);
+      try {
+        a.muted = true;
+        a.volume = 0;
+        p = a.play();
+        if (p && typeof p.then === 'function') {
+          p.then(function (el) {
+            return function () {
+              try { el.pause(); el.currentTime = 0; } catch (e3) {}
+              el.muted = false;
+              el.volume = 1;
+            };
+          }(a)).catch(function (el) {
+            return function () { el.muted = false; el.volume = 1; };
+          }(a));
+        } else {
+          try { a.pause(); a.currentTime = 0; } catch (e4) {}
+          a.muted = false;
+          a.volume = 1;
+        }
+      } catch (e5) {
+        a.muted = false;
+        a.volume = 1;
+      }
+    }
+    audioUnlocked = true;
+  }
+
+  function stopCurrentSfx() {
+    if (!currentSfx) return;
+    try { currentSfx.pause(); } catch (e1) {}
+    try { currentSfx.currentTime = 0; } catch (e2) {}
+    currentSfx = null;
+  }
+
+  function clearVoicePriority() {
+    voicePriority = false;
+  }
+
+  function playHtmlSfx(url, vol, opts) {
+    try {
+      opts = opts || {};
+      var priority = !!opts.priority;
+      if (!audioUnlocked) unlockAudio();
+      if (voicePriority && !priority) return;
+      // Meows can overlap a little - only interrupt if priority or same pool quiet
+      if (priority || !opts.overlap) stopCurrentSfx();
+      if (priority) voicePriority = true;
+      var a = getSfxEl(url);
+      // For overlapping meows, clone briefly if already playing
+      if (opts.overlap && !a.paused && a.currentTime > 0) {
+        try {
+          var clone = a.cloneNode();
+          clone.volume = vol == null ? 0.85 : vol;
+          clone.play().catch(function () {});
+          return;
+        } catch (e0) {}
+      }
+      a.muted = false;
+      a.volume = vol == null ? 1 : vol;
+      try { a.currentTime = 0; } catch (e1) {}
+      a.onended = function () {
+        if (currentSfx === a) currentSfx = null;
+        if (priority) clearVoicePriority();
+      };
+      if (!opts.overlap) currentSfx = a;
+      var p = a.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(function () {
+          if (currentSfx === a) currentSfx = null;
+          if (priority) clearVoicePriority();
+        });
+      }
+    } catch (err) {
+      if (opts && opts.priority) clearVoicePriority();
+    }
+  }
+
+  function playMeow() {
+    var url = MEOW_URLS[Math.floor(Math.random() * MEOW_URLS.length)];
+    playHtmlSfx(url, 0.9, { overlap: true });
+  }
+
+  function playCockadoodle() {
+    playHtmlSfx('sfx/cockadoodle.wav', 1, { priority: true });
+  }
+
+  var sfxWarm = false;
+  function warmSfx() {
+    if (sfxWarm) return;
+    sfxWarm = true;
+    var i;
+    for (i = 0; i < ALL_SFX_URLS.length; i++) getSfxEl(ALL_SFX_URLS[i]);
+  }
+
+  // --- Pointer ---
+  var _ptr = { x: 0, y: 0 };
+  var _rect = { left: 0, top: 0, width: W, height: H };
+  var _rectDirty = true;
+  function invalidateRect() { _rectDirty = true; }
+  window.addEventListener('resize', invalidateRect);
+  window.addEventListener('scroll', invalidateRect, true);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', invalidateRect);
+    window.visualViewport.addEventListener('scroll', invalidateRect);
+  }
+
+  function syncRect() {
+    if (!_rectDirty) return;
+    var r = canvas.getBoundingClientRect();
+    _rect.left = r.left;
+    _rect.top = r.top;
+    _rect.width = r.width || 1;
+    _rect.height = r.height || 1;
+    _rectDirty = false;
+  }
+
+  function pointerPos(e) {
+    syncRect();
+    var src = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
+    _ptr.x = (src.clientX - _rect.left) * (W / _rect.width);
+    _ptr.y = (src.clientY - _rect.top) * (H / _rect.height);
+    return _ptr;
+  }
+
+  var activePointerId = null;
+  var movePending = false;
+  var moveEvt = null;
+
+  function clampPlayer(x, y) {
+    var r = state.player.r;
+    x = Math.max(WALL + r, Math.min(W - WALL - r - 4, x));
+    y = Math.max(TOP_BAR + r, Math.min(H - WALL - r, y));
+    // Soft shelf push
+    var i, s, cx, cy, hx, hy, dx, dy, ox, oy;
+    for (i = 0; i < state.shelves.length; i++) {
+      s = state.shelves[i];
+      cx = Math.max(s.x, Math.min(x, s.x + s.w));
+      cy = Math.max(s.y, Math.min(y, s.y + s.h));
+      dx = x - cx;
+      dy = y - cy;
+      if (dx * dx + dy * dy < r * r) {
+        if (dx === 0 && dy === 0) {
+          // Centered - push left
+          x = s.x - r - 1;
+        } else {
+          var len = Math.sqrt(dx * dx + dy * dy) || 1;
+          ox = (dx / len) * (r - Math.sqrt(dx * dx + dy * dy) + 0.5);
+          oy = (dy / len) * (r - Math.sqrt(dx * dx + dy * dy) + 0.5);
+          x += ox;
+          y += oy;
+        }
+      }
+    }
+    return { x: x, y: y };
+  }
+
+  function applyDragFromEvent(e) {
+    if (state.mode !== 'play') return;
+    var p = pointerPos(e);
+    if (state.recenterDrag) {
+      state.dragOff.x = state.player.x - p.x;
+      state.dragOff.y = state.player.y - p.y;
+      state.recenterDrag = false;
+    }
+    var x = p.x + state.dragOff.x;
+    var y = p.y + state.dragOff.y;
+    var c = clampPlayer(x, y);
+    state.player.x = c.x;
+    state.player.y = c.y;
+  }
+
+  function flushMove() {
+    movePending = false;
+    if (!state.dragging || !moveEvt) return;
+    applyDragFromEvent(moveEvt);
+  }
+
+  function onDown(e) {
+    if (e.pointerType === 'mouse' && e.button != null && e.button !== 0) return;
+    if (activePointerId != null && e.pointerId != null && e.pointerId !== activePointerId) return;
+    e.preventDefault();
+    unlockAudio();
+    warmSfx();
+    if (state.mode !== 'play') return;
+    _rectDirty = true;
+    var p = pointerPos(e);
+    state.dragging = true;
+    if (e.pointerId != null) activePointerId = e.pointerId;
+    canvas.classList.add('dragging');
+    state.dragOff.x = state.player.x - p.x;
+    state.dragOff.y = state.player.y - p.y;
+    try {
+      if (e.pointerId != null && canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+    } catch (e1) {}
+  }
+
+  function onMove(e) {
+    if (!state.dragging) return;
+    if (activePointerId != null && e.pointerId != null && e.pointerId !== activePointerId) return;
+    e.preventDefault();
+    moveEvt = e;
+    if (!movePending) {
+      movePending = true;
+      requestAnimationFrame(flushMove);
+    }
+  }
+
+  function onUp(e) {
+    if (!state.dragging) return;
+    if (activePointerId != null && e.pointerId != null && e.pointerId !== activePointerId) return;
+    e.preventDefault();
+    if (movePending && moveEvt) {
+      applyDragFromEvent(moveEvt);
+      movePending = false;
+    }
+    state.dragging = false;
+    activePointerId = null;
+    moveEvt = null;
+    canvas.classList.remove('dragging');
+    try {
+      if (e.pointerId != null && canvas.releasePointerCapture) canvas.releasePointerCapture(e.pointerId);
+    } catch (e1) {}
+  }
+
+  var keys = { w: false, a: false, s: false, d: false };
+  var WASD_SPEED = 3.8;
+
+  function onKeyDown(e) {
+    var k = e.key;
+    if (!k) return;
+    k = k.length === 1 ? k.toLowerCase() : k;
+    if (k === 'w' || k === 'a' || k === 's' || k === 'd') {
+      e.preventDefault();
+      keys[k] = true;
+      unlockAudio();
+      warmSfx();
+    }
+  }
+
+  function onKeyUp(e) {
+    var k = e.key;
+    if (!k) return;
+    k = k.length === 1 ? k.toLowerCase() : k;
+    if (k === 'w' || k === 'a' || k === 's' || k === 'd') {
+      e.preventDefault();
+      keys[k] = false;
+    }
+  }
+
+  function applyWasdMove() {
+    if (state.mode !== 'play') return;
+    if (state.dragging) return;
+    var dx = 0, dy = 0;
+    if (keys.w) dy -= 1;
+    if (keys.s) dy += 1;
+    if (keys.a) dx -= 1;
+    if (keys.d) dx += 1;
+    if (!dx && !dy) return;
+    var len = Math.sqrt(dx * dx + dy * dy);
+    var spd = WASD_SPEED * ((state._dt || 1 / 60) * 60);
+    dx = (dx / len) * spd;
+    dy = (dy / len) * spd;
+    var c = clampPlayer(state.player.x + dx, state.player.y + dy);
+    state.player.x = c.x;
+    state.player.y = c.y;
+  }
+
+  if (window.PointerEvent) {
+    canvas.addEventListener('pointerdown', onDown, { passive: false });
+    canvas.addEventListener('pointermove', onMove, { passive: false });
+    canvas.addEventListener('pointerup', onUp, { passive: false });
+    canvas.addEventListener('pointercancel', onUp, { passive: false });
+    canvas.addEventListener('lostpointercapture', onUp, { passive: false });
+  } else {
+    canvas.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    canvas.addEventListener('touchstart', onDown, { passive: false });
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onUp, { passive: false });
+    window.addEventListener('touchcancel', onUp, { passive: false });
+  }
+
+  elNick.addEventListener('click', function () {
+    unlockAudio();
+    renameNick();
+  });
+  document.getElementById('reset').addEventListener('click', function () {
+    unlockAudio();
+    resetAll();
+  });
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', function () {
+    keys.w = keys.a = keys.s = keys.d = false;
+  });
+
+  // --- Physics helpers ---
+  function resolveCircleRect(ent, s) {
+    var cx = Math.max(s.x, Math.min(ent.x, s.x + s.w));
+    var cy = Math.max(s.y, Math.min(ent.y, s.y + s.h));
+    var dx = ent.x - cx;
+    var dy = ent.y - cy;
+    var d2 = dx * dx + dy * dy;
+    var r = ent.r;
+    if (d2 >= r * r) return;
+    if (d2 < 0.0001) {
+      // Push toward nearest edge
+      var left = ent.x - s.x;
+      var right = s.x + s.w - ent.x;
+      var top = ent.y - s.y;
+      var bot = s.y + s.h - ent.y;
+      var m = Math.min(left, right, top, bot);
+      if (m === left) { ent.x = s.x - r; ent.vx = -Math.abs(ent.vx); }
+      else if (m === right) { ent.x = s.x + s.w + r; ent.vx = Math.abs(ent.vx); }
+      else if (m === top) { ent.y = s.y - r; ent.vy = -Math.abs(ent.vy); }
+      else { ent.y = s.y + s.h + r; ent.vy = Math.abs(ent.vy); }
+      return;
+    }
+    var d = Math.sqrt(d2);
+    var push = (r - d) + 0.5;
+    ent.x += (dx / d) * push;
+    ent.y += (dy / d) * push;
+    // Bounce a bit
+    var nx = dx / d, ny = dy / d;
+    var vn = ent.vx * nx + ent.vy * ny;
+    if (vn < 0) {
+      ent.vx -= 1.4 * vn * nx;
+      ent.vy -= 1.4 * vn * ny;
+    }
+  }
+
+  function clampEntity(ent) {
+    var r = ent.r;
+    if (ent.x < WALL + r) { ent.x = WALL + r; ent.vx = Math.abs(ent.vx) * 0.6; }
+    if (ent.x > W - WALL - r) {
+      // Right wall: allow exit only through door band
+      if (ent.y > DOOR.y + 8 && ent.y < DOOR.y + DOOR.h - 8) {
+        // approaching door - don't bounce hard
+        if (ent.x > W - 6) {
+          // fully off screen via door
+          return 'exit';
+        }
+      } else {
+        ent.x = W - WALL - r;
+        ent.vx = -Math.abs(ent.vx) * 0.6;
+      }
+    }
+    if (ent.y < TOP_BAR + r) { ent.y = TOP_BAR + r; ent.vy = Math.abs(ent.vy) * 0.6; }
+    if (ent.y > H - WALL - r) { ent.y = H - WALL - r; ent.vy = -Math.abs(ent.vy) * 0.6; }
+    var i;
+    for (i = 0; i < state.shelves.length; i++) resolveCircleRect(ent, state.shelves[i]);
+    return null;
+  }
+
+  function pushCat(cat) {
+    var p = state.player;
+    var d = dist(p.x, p.y, cat.x, cat.y);
+    var minD = p.r + cat.r;
+    if (d >= minD || d < 0.001) return false;
+    var nx = (cat.x - p.x) / d;
+    var ny = (cat.y - p.y) / d;
+    var overlap = minD - d;
+    cat.x += nx * (overlap + 0.5);
+    cat.y += ny * (overlap + 0.5);
+    // Nudge velocity away from Mandy
+    var boost = 2.8 + overlap * 0.15;
+    cat.vx += nx * boost;
+    cat.vy += ny * boost;
+    // Cap speed
+    var spd = Math.sqrt(cat.vx * cat.vx + cat.vy * cat.vy);
+    if (spd > 7) {
+      cat.vx = (cat.vx / spd) * 7;
+      cat.vy = (cat.vy / spd) * 7;
+    }
+    if (cat.meowCd <= 0) {
+      playMeow();
+      cat.meowCd = 0.45 + Math.random() * 0.25;
+    }
+    return true;
+  }
+
+  function updateCats(dt) {
+    var i, cat, result;
+    var alive = [];
+    for (i = 0; i < state.cats.length; i++) {
+      cat = state.cats[i];
+      if (cat.exiting) {
+        cat.exitT += dt;
+        cat.x += 5.5;
+        cat.y += Math.sin(cat.exitT * 20) * 0.8;
+        if (cat.exitT < 0.45) alive.push(cat);
+        continue;
+      }
+      if (cat.meowCd > 0) cat.meowCd -= dt;
+      cat.wobble += dt * 4;
+
+      // Idle wander
+      cat.vx += (Math.random() - 0.5) * 0.08;
+      cat.vy += (Math.random() - 0.5) * 0.08;
+      // Mild drag
+      cat.vx *= 0.985;
+      cat.vy *= 0.985;
+      // Soft bias away from door unless being pushed hard (keeps them in store)
+      if (cat.x > W - 120 && Math.abs(cat.vx) < 2.2) {
+        cat.vx -= 0.04;
+      }
+
+      cat.x += cat.vx * (dt * 60);
+      cat.y += cat.vy * (dt * 60);
+
+      if (state.mode === 'play') pushCat(cat);
+
+      result = clampEntity(cat);
+      if (result === 'exit') {
+        catExited(cat);
+        alive.push(cat);
+      } else if (cat.x > W - 8 && cat.y > DOOR.y + 4 && cat.y < DOOR.y + DOOR.h - 4) {
+        catExited(cat);
+        alive.push(cat);
+      } else {
+        alive.push(cat);
+      }
+    }
+    state.cats = alive;
+
+    if (state.mode === 'play') {
+      var remaining = 0;
+      for (i = 0; i < state.cats.length; i++) {
+        if (!state.cats[i].exiting) remaining += 1;
+      }
+      if (remaining === 0 && state.cats.length === 0) {
+        // All cleared (exiting ones already removed)
+        levelCleared();
+      } else if (remaining === 0) {
+        // Wait for exit anims then clear
+        var allGone = true;
+        for (i = 0; i < state.cats.length; i++) {
+          if (!state.cats[i].exiting) allGone = false;
+        }
+        if (allGone && state.cats.every(function (c) { return c.exitT > 0.4; })) {
+          levelCleared();
+        }
+      }
+    }
+  }
+
+  function updateRonnie(dt) {
+    var r = state.ronnie;
+    if (!r) return;
+    state.modeT += dt;
+
+    if (state.mode === 'ronnie_intro') {
+      // Slide in from left, crow, then chase
+      r.x += (80 - r.x) * Math.min(1, dt * 3);
+      r.y = H / 2 + Math.sin(state.modeT * 8) * 6;
+      if (state.modeT > 1.6) {
+        state.mode = 'ronnie_chase';
+        state.modeT = 0;
+        say('RONNIE CHASES MANDY OUT!');
+      }
+      return;
+    }
+
+    if (state.mode === 'ronnie_chase') {
+      // Force Mandy toward the front door; Ronnie pursues
+      var targetX = DOOR.cx;
+      var targetY = DOOR.cy;
+      var p = state.player;
+      p.x += (targetX - p.x) * Math.min(1, dt * 2.2);
+      p.y += (targetY - p.y) * Math.min(1, dt * 2.2);
+      // Ronnie flies at Mandy
+      var dx = p.x - r.x;
+      var dy = p.y - r.y;
+      var d = Math.sqrt(dx * dx + dy * dy) || 1;
+      r.x += (dx / d) * 5.2 * (dt * 60);
+      r.y += (dy / d) * 5.2 * (dt * 60);
+      r.y += Math.sin(state.modeT * 14) * 1.2;
+
+      // Once Mandy is near/through door, soft reset
+      if (p.x > W - 40 || state.modeT > 2.4) {
+        state.mode = 'soft_reset';
+        state.modeT = 0;
+      }
+      return;
+    }
+
+    if (state.mode === 'soft_reset') {
+      softResetKeepScore();
+    }
+  }
+
+  function update(dt) {
+    applyWasdMove();
+    if (state.mode === 'play') {
+      updateCats(dt);
+      // Ronnie can trigger mid-level when score hits 10/20/30...
+      // (maybeTriggerRonnie called from catExited)
+    } else {
+      // Still let remaining cats drift during intro
+      updateCats(dt);
+      updateRonnie(dt);
+    }
+  }
+
+  // --- Draw ---
+  function drawStore() {
+    // Floor boards
+    ctx.fillStyle = '#3a2a1c';
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = '#2a1e14';
+    ctx.lineWidth = 2;
+    var y;
+    for (y = TOP_BAR; y < H; y += 22) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+    // Wood plank grain hints
+    ctx.strokeStyle = '#4a3828';
+    ctx.lineWidth = 1;
+    for (y = TOP_BAR + 8; y < H; y += 44) {
+      ctx.beginPath();
+      ctx.moveTo(20, y);
+      ctx.lineTo(W - 40, y);
+      ctx.stroke();
+    }
+
+    // Ceiling / header bar
+    ctx.fillStyle = '#1a120c';
+    ctx.fillRect(0, 0, W, TOP_BAR);
+    ctx.fillStyle = '#7cff9a';
+    ctx.font = '8px "Press Start 2P"';
+    ctx.fillText("MANDY'S STORE", 14, 24);
+
+    // Walls
+    ctx.strokeStyle = '#5a4838';
+    ctx.lineWidth = 8;
+    ctx.strokeRect(WALL / 2, TOP_BAR + 2, W - WALL, H - TOP_BAR - WALL / 2);
+
+    // Window on left
+    ctx.fillStyle = '#203848';
+    ctx.fillRect(28, 140, 36, 50);
+    ctx.strokeStyle = '#8ab0c8';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(28, 140, 36, 50);
+    ctx.beginPath();
+    ctx.moveTo(46, 140);
+    ctx.lineTo(46, 190);
+    ctx.moveTo(28, 165);
+    ctx.lineTo(64, 165);
+    ctx.stroke();
+    // Light spill
+    ctx.fillStyle = 'rgba(160, 200, 220, 0.08)';
+    ctx.fillRect(64, 140, 50, 70);
+
+    // Shelves
+    var i, s;
+    for (i = 0; i < state.shelves.length; i++) {
+      s = state.shelves[i];
+      ctx.fillStyle = '#6a4830';
+      ctx.fillRect(s.x, s.y, s.w, s.h);
+      ctx.fillStyle = '#8a6848';
+      ctx.fillRect(s.x, s.y, s.w, 8);
+      ctx.strokeStyle = '#2a1a10';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(s.x, s.y, s.w, s.h);
+      // jars / boxes
+      ctx.fillStyle = '#c05040';
+      ctx.fillRect(s.x + 8, s.y + 14, 10, 14);
+      ctx.fillStyle = '#e8c060';
+      ctx.fillRect(s.x + 24, s.y + 16, 12, 12);
+      ctx.fillStyle = '#5080c0';
+      ctx.fillRect(s.x + 42, s.y + 14, 10, 14);
+      if (s.label) {
+        ctx.fillStyle = '#ffe08a';
+        ctx.font = '6px "Press Start 2P"';
+        ctx.textAlign = 'center';
+        ctx.fillText(s.label, s.x + s.w / 2, s.y - 4);
+        ctx.textAlign = 'left';
+      }
+    }
+
+    // Front door (RIGHT wall) - always visible
+    drawDoor();
+  }
+
+  function drawDoor() {
+    var d = DOOR;
+    // Door frame
+    ctx.fillStyle = '#2a4a20';
+    ctx.fillRect(d.x - 6, d.y - 8, d.w + 12, d.h + 16);
+    // Door opening (bright outside)
+    ctx.fillStyle = '#7ec8ff';
+    ctx.fillRect(d.x, d.y, d.w, d.h);
+    // Sun stripes
+    ctx.fillStyle = '#ffe08a';
+    ctx.fillRect(d.x + 2, d.y + 10, d.w - 4, 6);
+    ctx.fillRect(d.x + 2, d.y + 40, d.w - 4, 6);
+    ctx.fillRect(d.x + 2, d.y + 70, d.w - 4, 6);
+    ctx.strokeStyle = '#7cff9a';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(d.x - 4, d.y - 6, d.w + 8, d.h + 12);
+
+    // Label
+    ctx.save();
+    ctx.translate(d.x - 18, d.cy);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = '#ffe08a';
+    ctx.font = '8px "Press Start 2P"';
+    ctx.textAlign = 'center';
+    ctx.fillText('FRONT DOOR', 0, 0);
+    ctx.restore();
+
+    // Arrow pointing out
+    ctx.fillStyle = '#7cff9a';
+    ctx.beginPath();
+    ctx.moveTo(d.x - 28, d.cy - 8);
+    ctx.lineTo(d.x - 10, d.cy);
+    ctx.lineTo(d.x - 28, d.cy + 8);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawCat(cat) {
+    var x = cat.x, y = cat.y;
+    var bob = Math.sin(cat.wobble) * 1.5;
+    var col = cat.color;
+    ctx.save();
+    if (cat.exiting) {
+      ctx.globalAlpha = Math.max(0, 1 - cat.exitT * 2);
+    }
+    // Body
+    ctx.fillStyle = col.body;
+    ctx.beginPath();
+    ctx.ellipse(x, y + bob, cat.r * 1.1, cat.r * 0.85, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Belly
+    ctx.fillStyle = col.belly;
+    ctx.beginPath();
+    ctx.ellipse(x, y + bob + 2, cat.r * 0.55, cat.r * 0.45, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Head
+    ctx.fillStyle = col.body;
+    ctx.beginPath();
+    ctx.arc(x + cat.r * 0.55, y + bob - cat.r * 0.35, cat.r * 0.7, 0, Math.PI * 2);
+    ctx.fill();
+    // Ears
+    ctx.fillStyle = col.ear;
+    ctx.beginPath();
+    ctx.moveTo(x + cat.r * 0.2, y + bob - cat.r * 0.7);
+    ctx.lineTo(x + cat.r * 0.35, y + bob - cat.r * 1.25);
+    ctx.lineTo(x + cat.r * 0.55, y + bob - cat.r * 0.65);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x + cat.r * 0.7, y + bob - cat.r * 0.65);
+    ctx.lineTo(x + cat.r * 0.95, y + bob - cat.r * 1.2);
+    ctx.lineTo(x + cat.r * 1.05, y + bob - cat.r * 0.55);
+    ctx.closePath();
+    ctx.fill();
+    // Eyes
+    ctx.fillStyle = '#1a0610';
+    ctx.beginPath();
+    ctx.arc(x + cat.r * 0.45, y + bob - cat.r * 0.4, 1.6, 0, Math.PI * 2);
+    ctx.arc(x + cat.r * 0.75, y + bob - cat.r * 0.4, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+    // Tail
+    ctx.strokeStyle = col.body;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x - cat.r * 0.9, y + bob);
+    ctx.quadraticCurveTo(
+      x - cat.r * 1.6,
+      y + bob - 10 - Math.sin(cat.wobble * 1.3) * 4,
+      x - cat.r * 1.2,
+      y + bob - 16
+    );
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawMandy() {
+    var p = state.player;
+    var scared = state.mode === 'ronnie_chase' || state.mode === 'ronnie_intro';
+    // Boots
+    ctx.fillStyle = '#4a3020';
+    ctx.fillRect(p.x - 10, p.y + 10, 8, 6);
+    ctx.fillRect(p.x + 2, p.y + 10, 8, 6);
+    // Overalls
+    ctx.fillStyle = '#3a6a9a';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y + 2, 11, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Shirt
+    ctx.fillStyle = '#e8b070';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y - 6, 9, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Head
+    ctx.fillStyle = '#f0c8a8';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y - 16, 10, 0, Math.PI * 2);
+    ctx.fill();
+    // Hair
+    ctx.fillStyle = '#5a3820';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y - 22, 10, 6, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+    // Eyes
+    ctx.fillStyle = '#1a0610';
+    if (scared) {
+      // Wide eyes
+      ctx.beginPath();
+      ctx.arc(p.x - 3.5, p.y - 17, 2.2, 0, Math.PI * 2);
+      ctx.arc(p.x + 3.5, p.y - 17, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(p.x - 3, p.y - 17.5, 0.8, 0, Math.PI * 2);
+      ctx.arc(p.x + 4, p.y - 17.5, 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x - 3.5, p.y - 17, 1.5, 0, Math.PI * 2);
+      ctx.arc(p.x + 3.5, p.y - 17, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Smile / O mouth
+    ctx.strokeStyle = '#1a0610';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    if (scared) {
+      ctx.arc(p.x, p.y - 12, 2.5, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      ctx.arc(p.x, p.y - 13, 3.5, 0.15, Math.PI - 0.15);
+      ctx.stroke();
+    }
+    // Name tag
+    ctx.fillStyle = '#ffe08a';
+    ctx.font = '5px "Press Start 2P"';
+    ctx.textAlign = 'center';
+    ctx.fillText('MANDY', p.x, p.y + 22);
+    ctx.textAlign = 'left';
+  }
+
+  function drawRonnie() {
+    var r = state.ronnie;
+    if (!r) return;
+    var bob = Math.sin(state.modeT * 12) * 3;
+    // Body
+    ctx.fillStyle = '#e85030';
+    ctx.beginPath();
+    ctx.ellipse(r.x, r.y + bob, 16, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Tail feathers
+    ctx.fillStyle = '#c03020';
+    ctx.beginPath();
+    ctx.ellipse(r.x - 16, r.y + bob - 4, 10, 6, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#f0a020';
+    ctx.beginPath();
+    ctx.ellipse(r.x - 18, r.y + bob + 4, 8, 5, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    // Head
+    ctx.fillStyle = '#f0f0e8';
+    ctx.beginPath();
+    ctx.arc(r.x + 12, r.y + bob - 10, 10, 0, Math.PI * 2);
+    ctx.fill();
+    // Comb
+    ctx.fillStyle = '#d02020';
+    ctx.beginPath();
+    ctx.arc(r.x + 10, r.y + bob - 20, 4, 0, Math.PI * 2);
+    ctx.arc(r.x + 16, r.y + bob - 22, 4.5, 0, Math.PI * 2);
+    ctx.arc(r.x + 20, r.y + bob - 18, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Beak
+    ctx.fillStyle = '#f0a020';
+    ctx.beginPath();
+    ctx.moveTo(r.x + 20, r.y + bob - 10);
+    ctx.lineTo(r.x + 30, r.y + bob - 8);
+    ctx.lineTo(r.x + 20, r.y + bob - 5);
+    ctx.closePath();
+    ctx.fill();
+    // Eye
+    ctx.fillStyle = '#1a0610';
+    ctx.beginPath();
+    ctx.arc(r.x + 14, r.y + bob - 12, 2, 0, Math.PI * 2);
+    ctx.fill();
+    // Label
+    ctx.fillStyle = '#ffe08a';
+    ctx.font = '6px "Press Start 2P"';
+    ctx.textAlign = 'center';
+    ctx.fillText('RONNIE', r.x, r.y + bob + 24);
+    ctx.textAlign = 'left';
+  }
+
+  function draw() {
+    drawStore();
+    var i;
+    for (i = 0; i < state.cats.length; i++) drawCat(state.cats[i]);
+    drawMandy();
+    if (state.ronnie) drawRonnie();
+
+    // Mode overlay hint
+    if (state.mode === 'ronnie_intro' || state.mode === 'ronnie_chase') {
+      ctx.fillStyle = 'rgba(255, 80, 40, 0.12)';
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  var lastTs = 0;
+  function frame(ts) {
+    if (!ts) ts = performance.now();
+    var dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 1 / 60;
+    lastTs = ts;
+    state._dt = dt;
+    update(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  buildShelves();
+  resetAll();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
