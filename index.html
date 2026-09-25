@@ -288,6 +288,14 @@
     } catch (e) {}
   }
 
+  function paintSelection() {
+    var items = menu.querySelectorAll('.item');
+    for (var i = 0; i < items.length; i++) {
+      if (i === selected) items[i].classList.add('selected');
+      else items[i].classList.remove('selected');
+    }
+  }
+
   function render() {
     menu.innerHTML = '';
     programs.forEach(function (p, i) {
@@ -301,27 +309,35 @@
         '<span class="cursor">▶</span>' +
         '<span class="name">' + p.name + '</span>' +
         '<span class="tag">' + p.tag + '</span>';
+      // Safari: do NOT rebuild the menu on hover — that destroys the
+      // element under the cursor and the click never fires.
       el.addEventListener('mouseenter', function () {
+        if (selected === i) return;
         selected = i;
-        render();
+        paintSelection();
       });
       function activate(ev) {
         selected = i;
+        paintSelection();
         if (!p.live) {
           if (ev) ev.preventDefault();
           beep(220, 0.08);
           showToast(p.blurb || 'Coming soon!');
-          render();
           return;
         }
-        if (ev) ev.preventDefault();
         beep(660, 0.05);
-        window.location.href = p.href;
+        // Live rows are real <a href> — let navigation proceed (Safari-safe).
+        // Only force location if this wasn't a normal click on the anchor.
+        if (!ev || ev.type === 'touchend' || ev.type === 'keydown') {
+          if (ev) ev.preventDefault();
+          window.location.href = p.href;
+        }
       }
       el.addEventListener('click', function (ev) {
         activate(ev);
       });
       el.addEventListener('touchend', function (ev) {
+        // Avoid ghost clicks after touch without killing the element.
         ev.preventDefault();
         activate(ev);
       }, { passive: false });

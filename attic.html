@@ -26,13 +26,31 @@
   .hud {
     width: min(720px, 96vw);
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
-    gap: 10px;
+    align-items: center;
+    gap: 8px 12px;
     font-size: clamp(8px, 2.2vw, 10px);
     line-height: 1.5;
     color: #7cff9a;
   }
   .hud span { color: #c8f0c0; }
+  .hud .nick {
+    font: inherit;
+    color: #ffe08a;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    max-width: 42vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hud .nick:hover { color: #7cff9a; }
+  .hud .nick:focus { outline: 1px dashed #7cff9a; outline-offset: 2px; }
   #wrap {
     position: relative;
     width: min(720px, 96vw);
@@ -76,15 +94,76 @@
     cursor: pointer;
   }
   a.back:hover, button.reset:hover { color: #7cff9a; border-color: #7cff9a; }
+  #pow {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 20;
+    background: rgba(0, 0, 0, 0.35);
+  }
+  #pow.on { display: flex; }
+  #pow .burst {
+    position: relative;
+    width: min(78%, 340px);
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: pow-pop 2.5s ease-out forwards;
+  }
+  #pow .burst::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      conic-gradient(from 12deg,
+        #ffef3a 0 10%, #ff2d55 10% 20%, #3ad0ff 20% 30%, #ffef3a 30% 40%,
+        #ff2d55 40% 50%, #3ad0ff 50% 60%, #ffef3a 60% 70%, #ff2d55 70% 80%,
+        #3ad0ff 80% 90%, #ffef3a 90% 100%);
+    clip-path: polygon(
+      50% 0%, 58% 18%, 78% 8%, 70% 28%, 96% 32%, 74% 44%, 92% 62%,
+      68% 58%, 72% 86%, 54% 70%, 50% 100%, 46% 70%, 28% 86%, 32% 58%,
+      8% 62%, 26% 44%, 4% 32%, 30% 28%, 22% 8%, 42% 18%
+    );
+    filter: drop-shadow(0 0 12px rgba(255, 239, 58, 0.85));
+  }
+  #pow .word {
+    position: relative;
+    z-index: 1;
+    font-size: clamp(28px, 9vw, 52px);
+    color: #1a0610;
+    text-shadow:
+      3px 3px 0 #fff,
+      -2px -2px 0 #ff2d55,
+      2px -2px 0 #3ad0ff;
+    transform: rotate(-8deg);
+    letter-spacing: 2px;
+  }
+  @keyframes pow-pop {
+    0%   { transform: scale(0.2) rotate(-18deg); opacity: 0; }
+    12%  { transform: scale(1.18) rotate(4deg); opacity: 1; }
+    28%  { transform: scale(0.96) rotate(-3deg); }
+    45%  { transform: scale(1.08) rotate(2deg); }
+    80%  { transform: scale(1.02) rotate(-1deg); opacity: 1; }
+    100% { transform: scale(1.35) rotate(0deg); opacity: 0; }
+  }
 </style>
 </head>
 <body>
   <div class="hud">
+    <button type="button" class="nick" id="nick" title="Tap to rename">NUGLET</button>
     <div>SCORE <span id="score">0</span></div>
+    <div>HIGH <span id="high">0</span></div>
     <div>ROOM <span id="room">1</span></div>
     <div>NUGS <span id="nugs">0</span>/5</div>
   </div>
-  <div id="wrap"><canvas id="c" width="640" height="480"></canvas></div>
+  <div id="wrap">
+    <canvas id="c" width="640" height="480"></canvas>
+    <div id="pow" aria-hidden="true"><div class="burst"><span class="word">NICE</span></div></div>
+  </div>
   <div id="msg">Drag your guy. Grab those McIntyre nugs.</div>
   <div class="bar">
     <a class="back" href="index.html">← PROGRAM MENU</a>
@@ -95,10 +174,69 @@
   var W = 640, H = 480;
   var canvas = document.getElementById('c');
   var ctx = canvas.getContext('2d');
+  var elNick = document.getElementById('nick');
   var elScore = document.getElementById('score');
+  var elHigh = document.getElementById('high');
   var elRoom = document.getElementById('room');
   var elNugs = document.getElementById('nugs');
   var elMsg = document.getElementById('msg');
+  var elPow = document.getElementById('pow');
+
+  // Profile lives in localStorage. Nick and scores are separate fields so
+  // renaming never wipes the high score. Clear site data = start over (fine).
+  var STORE_KEY = 'evilgame.attic.v1';
+  var NICK_ADJ = [
+    'Soggy', 'Crispy', 'Forbidden', 'Attic', 'Salad', 'Belchy', 'McIntyre',
+    'Pixel', 'Cursed', 'Moist', 'Spicy', 'Dusty', 'Greasy', 'Haunted', 'Chunky'
+  ];
+  var NICK_NOUN = [
+    'Pickle', 'Goblin', 'Nugget', 'Belcher', 'Wizard', 'Gremlin', 'Himbo',
+    'Lord', 'Wraith', 'Dumpling', 'Raccoon', 'Meatball', 'Phantom', 'Goose'
+  ];
+
+  function sillyNick() {
+    var a = NICK_ADJ[Math.floor(Math.random() * NICK_ADJ.length)];
+    var n = NICK_NOUN[Math.floor(Math.random() * NICK_NOUN.length)];
+    var num = 10 + Math.floor(Math.random() * 90);
+    return a + n + num;
+  }
+
+  function defaultProfile() {
+    return { nick: sillyNick(), highScore: 0, niceSeen: false };
+  }
+
+  function loadProfile() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return defaultProfile();
+      var o = JSON.parse(raw);
+      var out = defaultProfile();
+      if (o && typeof o.nick === 'string' && o.nick.trim()) {
+        out.nick = String(o.nick).trim().slice(0, 18);
+      }
+      if (o && typeof o.highScore === 'number' && isFinite(o.highScore) && o.highScore > 0) {
+        out.highScore = Math.floor(o.highScore);
+      }
+      if (o && o.niceSeen) out.niceSeen = true;
+      return out;
+    } catch (e1) {
+      return defaultProfile();
+    }
+  }
+
+  function saveProfile() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        nick: profile.nick,
+        highScore: profile.highScore,
+        niceSeen: !!profile.niceSeen
+      }));
+    } catch (e1) {}
+  }
+
+  var profile = loadProfile();
+  // Persist the first auto-nick so refresh keeps the same silly name.
+  saveProfile();
 
   var NUG_LINES = [
     'GOING TO GET ME MCINTYRE NUGGETS',
@@ -149,10 +287,32 @@
     return Math.sqrt(dx * dx + dy * dy);
   }
 
+  function bumpHighIfNeeded() {
+    if (state.score > profile.highScore) {
+      profile.highScore = state.score;
+      saveProfile();
+    }
+  }
+
   function hud() {
+    elNick.textContent = profile.nick;
     elScore.textContent = String(state.score);
+    elHigh.textContent = String(profile.highScore);
     elRoom.textContent = String(state.room);
     elNugs.textContent = String(state.roomNugs);
+  }
+
+  function renameNick() {
+    var cur = profile.nick;
+    var next = window.prompt('New silly nickname (score stays):', cur);
+    if (next == null) return;
+    next = String(next).trim().replace(/\s+/g, ' ').slice(0, 18);
+    if (!next) return;
+    // Only the nick field changes — highScore is written back untouched.
+    profile.nick = next;
+    saveProfile();
+    hud();
+    say(profile.nick + ' ENTERS THE ATTIC.');
   }
 
   function spawnNuggets() {
@@ -294,16 +454,19 @@
   }
 
   function spawnBelchItems() {
-    var total = 1 + Math.floor(Math.random() * 10); // 1..10
+    // Tuned so first 69 usually lands between run 2 and run 3:
+    // +75 per grow cycle (15 nugs × 5), then 8–10 belch snacks × −5 (avg −45).
+    // Net ~+30/cycle → after 2 cycles ~60, then a couple nugs into run 3 ≈ 69.
+    var total = 8 + Math.floor(Math.random() * 3); // 8..10
     var items = [];
     var tries = 0;
-    while (items.length < total && tries < 80) {
+    while (items.length < total && tries < 120) {
       tries += 1;
       var x = 70 + Math.random() * (W - 140);
       var y = 70 + Math.random() * (H - 140);
       var ok = true;
       for (var i = 0; i < items.length; i++) {
-        if (dist(x, y, items[i].x, items[i].y) < 36) { ok = false; break; }
+        if (dist(x, y, items[i].x, items[i].y) < 32) { ok = false; break; }
       }
       if (!ok) continue;
       items.push({
@@ -329,6 +492,7 @@
     if (it.eaten) return;
     it.eaten = true;
     state.score -= 5;
+    if (state.score < 0) state.score = 0;
     hud();
     playSlurp();
     var left = belchItemsLeft();
@@ -401,7 +565,9 @@
 
   function eatNug(n) {
     n.eaten = true;
-    state.score += 5;
+    state.score += 3;
+    bumpHighIfNeeded();
+    maybeNicePow();
     state.roomNugs += 1;
     state.nugsSinceShrink += 1;
     state.size = 1 + state.nugsSinceShrink * 0.12;
@@ -409,7 +575,7 @@
       state.tooBig = true;
     }
     playSlurp();
-    var line = NUG_LINES[(Math.floor(state.score / 5) - 1) % NUG_LINES.length];
+    var line = NUG_LINES[(Math.floor(state.score / 3) - 1) % NUG_LINES.length];
     if (state.roomNugs >= 5) {
       state.doorOpen = true;
       state.doorSide = pickDoorSide();
@@ -439,7 +605,8 @@
   var ALL_SFX_URLS = SLURP_URLS.concat([
     'sfx/door-open.wav',
     'sfx/dont-like-salad.wav',
-    'sfx/belchertown.wav'
+    'sfx/belchertown.wav',
+    'sfx/nice.wav'
   ]);
 
   function ensureAudio() {
@@ -617,6 +784,38 @@
     playHtmlSfx('sfx/belchertown.wav', 1, { priority: true });
   }
 
+  function loadNiceLine() {
+    getSfxEl('sfx/nice.wav');
+  }
+
+  function playNiceLine() {
+    try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e1) {}
+    // Batman-66 stinger — owns the mic for the blast.
+    playHtmlSfx('sfx/nice.wav', 1, { priority: true });
+  }
+
+  var nicePowTimer = null;
+  function maybeNicePow() {
+    if (profile.niceSeen) return;
+    if (state.score < 69) return;
+    profile.niceSeen = true;
+    saveProfile();
+    playNiceLine();
+    if (!elPow) return;
+    elPow.classList.remove('on');
+    // Retrigger CSS animation
+    void elPow.offsetWidth;
+    elPow.classList.add('on');
+    elPow.setAttribute('aria-hidden', 'false');
+    if (nicePowTimer) clearTimeout(nicePowTimer);
+    nicePowTimer = setTimeout(function () {
+      elPow.classList.remove('on');
+      elPow.setAttribute('aria-hidden', 'true');
+      nicePowTimer = null;
+    }, 2500);
+    say('NICE!!!');
+  }
+
   function pointerPos(e) {
     var rect = canvas.getBoundingClientRect();
     var src = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
@@ -633,6 +832,7 @@
     loadDoorOpen();
     loadSaladLine();
     loadBelchertownLine();
+    loadNiceLine();
     var p = pointerPos(e);
     // Drag anywhere on the canvas: finger need not be on the guy.
     // Offset keeps him from jumping under the pointer; he moves with the drag.
@@ -742,6 +942,10 @@
     // Extra unlock path for iOS Safari / Chrome (WebKit).
     unlockAudio();
   }, { passive: true });
+  elNick.addEventListener('click', function () {
+    unlockAudio();
+    renameNick();
+  });
   document.getElementById('reset').addEventListener('click', function () {
     unlockAudio();
     resetAll();
