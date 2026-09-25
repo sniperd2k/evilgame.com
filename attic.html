@@ -285,46 +285,6 @@
     say('BELCHERTOWN. GRAB CHOPSTICKS & FORTUNE COOKIES (−5). SALAD LINES THE WALLS.');
   }
 
-  var saladLineBuf = null;
-  var saladLineLoading = false;
-
-  function loadSaladLine() {
-    var ctx = ensureAudio();
-    if (!ctx || saladLineBuf || saladLineLoading) return;
-    saladLineLoading = true;
-    fetch('sfx/dont-like-salad.wav')
-      .then(function (r) { return r.arrayBuffer(); })
-      .then(function (buf) { return ctx.decodeAudioData(buf); })
-      .then(function (decoded) {
-        saladLineBuf = decoded;
-        saladLineLoading = false;
-      })
-      .catch(function () { saladLineLoading = false; });
-  }
-
-  function playDontLikeSalad() {
-    var ctx = ensureAudio();
-    loadSaladLine();
-    try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e1) {}
-    if (ctx && saladLineBuf) {
-      try {
-        var src = ctx.createBufferSource();
-        var g = ctx.createGain();
-        src.buffer = saladLineBuf;
-        g.gain.value = 1;
-        src.connect(g);
-        g.connect(ctx.destination);
-        src.start(0);
-        return;
-      } catch (err) {}
-    }
-    try {
-      var a = new Audio('sfx/dont-like-salad.wav');
-      a.volume = 1;
-      a.play().catch(function () {});
-    } catch (err) {}
-  }
-
   function returnToStartRoom() {
     state.salad = 90;
     state.size = 1;
@@ -389,25 +349,8 @@
   }
 
   var audioCtx = null;
-
-  if (window.speechSynthesis) {
-    speechSynthesis.getVoices();
-    speechSynthesis.addEventListener('voiceschanged', function () {
-      speechSynthesis.getVoices();
-    });
-  }
-
-  function ensureAudio() {
-    try {
-      var AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return null;
-      if (!audioCtx) audioCtx = new AC();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-      return audioCtx;
-    } catch (err) {
-      return null;
-    }
-  }
+  var audioUnlocked = false;
+  var sfxEls = {};
 
   // Five handmade wet slurps — pick one at random on each nug.
   var SLURP_URLS = [
@@ -417,155 +360,141 @@
     'sfx/slurp4.wav',
     'sfx/slurp5.wav'
   ];
-  var slurpBuffers = [];
-  var slurpsReady = false;
+  var ALL_SFX_URLS = SLURP_URLS.concat([
+    'sfx/door-open.wav',
+    'sfx/dont-like-salad.wav'
+  ]);
 
-  function loadSlurps() {
+  function ensureAudio() {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      if (!audioCtx) audioCtx = new AC();
+      if (audioCtx.state === 'suspended') {
+        try { audioCtx.resume(); } catch (e1) {}
+      }
+      return audioCtx;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function getSfxEl(url) {
+    if (!sfxEls[url]) {
+      var a = new Audio();
+      a.preload = 'auto';
+      a.src = url;
+      try { a.setAttribute('playsinline', ''); a.playsInline = true; } catch (e1) {}
+      try { a.load(); } catch (e2) {}
+      sfxEls[url] = a;
+    }
+    return sfxEls[url];
+  }
+
+  // iOS (Safari + Chrome) only unlocks audio inside a real user gesture.
+  // Menu works because it beeps on tap; we do the same here on first touch.
+  function unlockAudio() {
     var ctx = ensureAudio();
-    if (!ctx || slurpsReady) return;
-    var left = SLURP_URLS.length;
-    SLURP_URLS.forEach(function (url, i) {
-      fetch(url)
-        .then(function (r) { return r.arrayBuffer(); })
-        .then(function (buf) { return ctx.decodeAudioData(buf); })
-        .then(function (decoded) {
-          slurpBuffers[i] = decoded;
-          left -= 1;
-          if (left <= 0) slurpsReady = true;
-        })
-        .catch(function () { left -= 1; });
-    });
+    if (ctx) {
+      try {
+        var o = ctx.createOscillator();
+        var g = ctx.createGain();
+        g.gain.value = 0.0001;
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start(0);
+        o.stop(ctx.currentTime + 0.04);
+      } catch (e1) {}
+      try { ctx.resume(); } catch (e2) {}
+    }
+    var i, a, p;
+    for (i = 0; i < ALL_SFX_URLS.length; i++) {
+      a = getSfxEl(ALL_SFX_URLS[i]);
+      try {
+        a.muted = true;
+        a.volume = 0;
+        p = a.play();
+        if (p && typeof p.then === 'function') {
+          p.then(function (el) {
+            return function () {
+              try { el.pause(); el.currentTime = 0; } catch (e3) {}
+              el.muted = false;
+              el.volume = 1;
+            };
+          }(a)).catch(function (el) {
+            return function () { el.muted = false; el.volume = 1; };
+          }(a));
+        } else {
+          try { a.pause(); a.currentTime = 0; } catch (e4) {}
+          a.muted = false;
+          a.volume = 1;
+        }
+      } catch (e5) {
+        a.muted = false;
+        a.volume = 1;
+      }
+    }
+    audioUnlocked = true;
+  }
+
+  function playHtmlSfx(url, vol) {
+    try {
+      if (!audioUnlocked) unlockAudio();
+      // Prefer a fresh element with the same src — most reliable on iOS after unlock.
+      var a = new Audio();
+      try { a.setAttribute('playsinline', ''); a.playsInline = true; } catch (e1) {}
+      a.src = url;
+      a.muted = false;
+      a.volume = vol == null ? 1 : vol;
+      var p = a.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(function () {
+          // Last resort: replay the primed pool element.
+          try {
+            var b = getSfxEl(url);
+            b.muted = false;
+            b.volume = vol == null ? 1 : vol;
+            try { b.currentTime = 0; } catch (e2) {}
+            var p2 = b.play();
+            if (p2 && typeof p2.catch === 'function') p2.catch(function () {});
+          } catch (e3) {}
+        });
+      }
+    } catch (err) {}
   }
 
   function playSlurp() {
-    var ctx = ensureAudio();
-    if (!ctx) return;
-    if (!slurpsReady) loadSlurps();
-    var pool = slurpBuffers.filter(Boolean);
-    if (!pool.length) {
-      // Fallback HTMLAudio while buffers warm up
-      try {
-        var a = new Audio(SLURP_URLS[Math.floor(Math.random() * SLURP_URLS.length)]);
-        a.volume = 0.9;
-        a.play().catch(function () {});
-      } catch (err) {}
-      return;
-    }
-    try {
-      var src = ctx.createBufferSource();
-      var g = ctx.createGain();
-      src.buffer = pool[Math.floor(Math.random() * pool.length)];
-      g.gain.value = 0.95;
-      src.connect(g);
-      g.connect(ctx.destination);
-      src.start(0);
-    } catch (err) {}
-  }
-
-  function pickDeepVoice() {
-    var voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
-    if (!voices || !voices.length) return null;
-    var prefer = [
-      /microsoft david/i,
-      /google uk english male/i,
-      /daniel/i,
-      /alex/i,
-      /fred/i,
-      /bruce/i,
-      /david/i,
-      /male/i
-    ];
-    var i, j, v;
-    for (i = 0; i < prefer.length; i++) {
-      for (j = 0; j < voices.length; j++) {
-        v = voices[j];
-        if (prefer[i].test(v.name) && /^en/i.test(v.lang)) return v;
-      }
-    }
-    for (j = 0; j < voices.length; j++) {
-      if (/^en/i.test(voices[j].lang)) return voices[j];
-    }
-    return voices[0];
-  }
-
-  // Baked deep voice: exact line "I open the door."
-  var doorOpenBuf = null;
-  var doorOpenLoading = false;
-
-  function loadDoorOpen() {
-    var ctx = ensureAudio();
-    if (!ctx || doorOpenBuf || doorOpenLoading) return;
-    doorOpenLoading = true;
-    fetch('sfx/door-open.wav')
-      .then(function (r) { return r.arrayBuffer(); })
-      .then(function (buf) { return ctx.decodeAudioData(buf); })
-      .then(function (decoded) {
-        doorOpenBuf = decoded;
-        doorOpenLoading = false;
-      })
-      .catch(function () { doorOpenLoading = false; });
+    var url = SLURP_URLS[Math.floor(Math.random() * SLURP_URLS.length)];
+    playHtmlSfx(url, 0.95);
   }
 
   function playDoorOpen() {
-    var ctx = ensureAudio();
-    loadDoorOpen();
-    if (ctx && doorOpenBuf) {
-      try {
-        speechSynthesis && speechSynthesis.cancel();
-        var src = ctx.createBufferSource();
-        var g = ctx.createGain();
-        src.buffer = doorOpenBuf;
-        g.gain.value = 1;
-        src.connect(g);
-        g.connect(ctx.destination);
-        src.start(0);
-        return;
-      } catch (err) {}
-    }
-    // Fallback while buffer loads / if decode fails
-    try {
-      var a = new Audio('sfx/door-open.wav');
-      a.volume = 1;
-      a.play().catch(function () {});
-    } catch (err) {}
+    try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e1) {}
+    playHtmlSfx('sfx/door-open.wav', 1);
   }
 
+  function loadSlurps() {
+    // Preload HTMLAudio elements (iOS-friendly). Kept for callers.
+    var i;
+    for (i = 0; i < SLURP_URLS.length; i++) getSfxEl(SLURP_URLS[i]);
+  }
 
-  function pickSillyChineseVoice() {
-    var voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
-    if (!voices || !voices.length) return null;
-    var i, v;
-    var preferName = [/tingting/i, /xiaoxiao/i, /xiaoyi/i, /yunjian/i, /yunxi/i, /kangkang/i, /huihui/i, /chinese/i, /zh-cn/i, /zh_cn/i];
-    for (i = 0; i < preferName.length; i++) {
-      for (var j = 0; j < voices.length; j++) {
-        v = voices[j];
-        if (preferName[i].test(v.name) || preferName[i].test(v.lang)) return v;
-      }
-    }
-    for (i = 0; i < voices.length; i++) {
-      if (/^zh/i.test(voices[i].lang)) return voices[i];
-    }
-    return null;
+  function loadDoorOpen() {
+    getSfxEl('sfx/door-open.wav');
+  }
+
+  function loadSaladLine() {
+    getSfxEl('sfx/dont-like-salad.wav');
+  }
+
+  function playDontLikeSalad() {
+    try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e1) {}
+    playHtmlSfx('sfx/dont-like-salad.wav', 1);
   }
 
   function playBelchertownLine() {
+    // No reliable TTS on iOS; keep silent HUD-only for now.
     ensureAudio();
-    if (!window.speechSynthesis) return;
-    try {
-      speechSynthesis.cancel();
-      var u = new SpeechSynthesisUtterance('Time to fuck off to Belchertown.');
-      u.volume = 1;
-      u.rate = 0.95;
-      u.pitch = 1.35;
-      var voice = pickSillyChineseVoice();
-      if (voice) {
-        u.voice = voice;
-        u.lang = voice.lang || 'zh-CN';
-      } else {
-        u.lang = 'zh-CN';
-      }
-      speechSynthesis.speak(u);
-    } catch (err) {}
   }
 
   function pointerPos(e) {
@@ -579,7 +508,7 @@
 
   function onDown(e) {
     e.preventDefault();
-    ensureAudio();
+    unlockAudio();
     loadSlurps();
     loadDoorOpen();
     loadSaladLine();
@@ -635,7 +564,14 @@
   canvas.addEventListener('touchstart', onDown, { passive: false });
   window.addEventListener('touchmove', onMove, { passive: false });
   window.addEventListener('touchend', onUp, { passive: false });
-  document.getElementById('reset').addEventListener('click', resetAll);
+  canvas.addEventListener('pointerdown', function (e) {
+    // Extra unlock path for iOS Safari / Chrome (WebKit).
+    unlockAudio();
+  }, { passive: true });
+  document.getElementById('reset').addEventListener('click', function () {
+    unlockAudio();
+    resetAll();
+  });
 
   function drawAttic() {
     ctx.fillStyle = '#2a1e14';
