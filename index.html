@@ -312,25 +312,18 @@
           beep(220, 0.08);
           showToast(p.blurb || 'Coming soon!');
           render();
-          return false;
+          return;
         }
+        if (ev) ev.preventDefault();
         beep(660, 0.05);
-        return true;
+        window.location.href = p.href;
       }
       el.addEventListener('click', function (ev) {
-        if (!p.live) {
-          ev.preventDefault();
-          activate(ev);
-        } else {
-          beep(660, 0.05);
-        }
+        activate(ev);
       });
       el.addEventListener('touchend', function (ev) {
-        // let live links navigate; block double-firing toast on soon items
-        if (!p.live) {
-          ev.preventDefault();
-          activate(ev);
-        }
+        ev.preventDefault();
+        activate(ev);
       }, { passive: false });
       li.appendChild(el);
       menu.appendChild(li);
