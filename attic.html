@@ -565,7 +565,7 @@
 
   function eatNug(n) {
     n.eaten = true;
-    state.score += 3;
+    state.score += 4;
     bumpHighIfNeeded();
     maybeNicePow();
     state.roomNugs += 1;
@@ -575,7 +575,7 @@
       state.tooBig = true;
     }
     playSlurp();
-    var line = NUG_LINES[(Math.floor(state.score / 3) - 1) % NUG_LINES.length];
+    var line = NUG_LINES[(Math.floor(state.score / 4) - 1) % NUG_LINES.length];
     if (state.roomNugs >= 5) {
       state.doorOpen = true;
       state.doorSide = pickDoorSide();
