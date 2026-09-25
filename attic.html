@@ -115,6 +115,7 @@
     nugsSinceShrink: 0,
     size: 1,
     doorOpen: false,
+    doorSide: 'right',
     tooBig: false,
     belchertown: false,
     scene: 'attic',
@@ -155,23 +156,89 @@
   }
 
   function spawnNuggets() {
-    var spots = [
-      [120, 140], [320, 110], [520, 150],
-      [160, 340], [480, 360]
-    ];
-    var jitter = state.room * 3;
-    state.nuggets = spots.map(function (s, i) {
-      return {
-        x: s[0] + ((i * 17 + jitter) % 21) - 10,
-        y: s[1] + ((i * 11 + jitter) % 17) - 8,
+    // Fully random nug spots each room (keep clear of edges / center spawn).
+    var nugs = [];
+    var tries = 0;
+    while (nugs.length < 5 && tries < 120) {
+      tries += 1;
+      var x = 70 + Math.random() * (W - 140);
+      var y = 70 + Math.random() * (H - 140);
+      var ok = true;
+      // Don't drop a nug right on the player
+      if (dist(x, y, state.player.x, state.player.y) < 70) ok = false;
+      for (var i = 0; i < nugs.length && ok; i++) {
+        if (dist(x, y, nugs[i].x, nugs[i].y) < 56) ok = false;
+      }
+      if (!ok) continue;
+      nugs.push({ x: x, y: y, r: 12, eaten: false });
+    }
+    // Fallback fill if RNG got unlucky
+    while (nugs.length < 5) {
+      nugs.push({
+        x: 80 + nugs.length * 90,
+        y: 120 + (nugs.length % 2) * 160,
         r: 12,
         eaten: false
-      };
-    });
-    state.player.x = W / 2;
-    state.player.y = H / 2;
+      });
+    }
+    state.nuggets = nugs;
     state.doorLatch = false;
     state.belchLatch = false;
+  }
+
+  function pickDoorSide() {
+    var sides = ['right', 'left', 'top', 'bottom'];
+    // When Belchertown is looming on the left wall, keep the door off that wall.
+    if (state.tooBig || state.nugsSinceShrink >= 15) {
+      sides = ['right', 'top', 'bottom'];
+    }
+    // Prefer a different wall than last time when possible.
+    if (state.doorSide && sides.length > 1) {
+      var filtered = sides.filter(function (s) { return s !== state.doorSide; });
+      if (filtered.length) sides = filtered;
+    }
+    return sides[Math.floor(Math.random() * sides.length)];
+  }
+
+  function oppositeSide(side) {
+    if (side === 'left') return 'right';
+    if (side === 'right') return 'left';
+    if (side === 'top') return 'bottom';
+    return 'top';
+  }
+
+  function doorGeom() {
+    // Returns { x, y, w, h, cx, cy, r } for the open door on state.doorSide.
+    var side = state.doorSide || 'right';
+    var w, h, x, y;
+    if (side === 'left' || side === 'right') {
+      w = 56; h = 90;
+      y = H / 2 - h / 2;
+      x = side === 'right' ? (W - 18 - w) : 18;
+    } else {
+      w = 90; h = 56;
+      x = W / 2 - w / 2;
+      y = side === 'top' ? 40 : (H - 18 - h);
+    }
+    return { x: x, y: y, w: w, h: h, cx: x + w / 2, cy: y + h / 2, r: 36, side: side };
+  }
+
+  function placePlayerAtEntry(entrySide) {
+    var margin = 54 + playerRadius();
+    if (entrySide === 'left') {
+      state.player.x = margin;
+      state.player.y = H / 2;
+    } else if (entrySide === 'right') {
+      state.player.x = W - margin;
+      state.player.y = H / 2;
+    } else if (entrySide === 'top') {
+      state.player.x = W / 2;
+      state.player.y = margin + 10;
+    } else {
+      state.player.x = W / 2;
+      state.player.y = H - margin;
+    }
+    state.recenterDrag = true;
   }
 
   function resetAll() {
@@ -193,15 +260,22 @@
     state.saladClosing = false;
     state.saladCloseT = 0;
     state.saladShouted = false;
+    state.doorSide = 'right';
+    state.player.x = W / 2;
+    state.player.y = H / 2;
     spawnNuggets();
     hud();
     say('Drag your guy. Grab those McIntyre nugs.');
   }
 
   function enterNextRoom() {
+    var exitSide = state.doorSide || 'right';
+    var entrySide = oppositeSide(exitSide);
     state.room += 1;
     state.roomNugs = 0;
     state.doorOpen = false;
+    // Walk in from the opposite wall, like a new connected room.
+    placePlayerAtEntry(entrySide);
     spawnNuggets();
     hud();
     say('SAME ATTIC. NEW NUGS. ROOM ' + state.room);
@@ -340,6 +414,7 @@
     var line = NUG_LINES[(Math.floor(state.score / 5) - 1) % NUG_LINES.length];
     if (state.roomNugs >= 5) {
       state.doorOpen = true;
+      state.doorSide = pickDoorSide();
       playDoorOpen();
       say('I open the door.');
     } else {
@@ -686,20 +761,31 @@
 
   function drawDoor() {
     if (!state.doorOpen) return;
-    var doorW = 56, doorH = 90;
-    var x = W - 18 - doorW;
-    var y = H / 2 - doorH / 2;
+    var d = doorGeom();
     ctx.fillStyle = state.tooBig ? '#4a2030' : '#3a5a28';
-    ctx.fillRect(x, y, doorW, doorH);
+    ctx.fillRect(d.x, d.y, d.w, d.h);
     ctx.strokeStyle = '#7cff9a';
     ctx.lineWidth = 3;
-    ctx.strokeRect(x, y, doorW, doorH);
+    ctx.strokeRect(d.x, d.y, d.w, d.h);
     ctx.fillStyle = '#c8f0c0';
     ctx.font = '8px "Press Start 2P"';
-    ctx.fillText('DOOR', x + 10, y - 8);
+    ctx.textAlign = 'center';
+    if (d.side === 'top') {
+      ctx.fillText('DOOR', d.cx, d.y + d.h + 14);
+    } else if (d.side === 'bottom') {
+      ctx.fillText('DOOR', d.cx, d.y - 8);
+    } else if (d.side === 'left') {
+      ctx.fillText('DOOR', d.cx + d.w / 2 + 28, d.cy + 3);
+    } else {
+      ctx.fillText('DOOR', d.cx - d.w / 2 - 28, d.cy + 3);
+    }
+    ctx.textAlign = 'left';
     ctx.fillStyle = '#ffe08a';
     ctx.beginPath();
-    ctx.arc(x + doorW - 12, y + doorH / 2, 4, 0, Math.PI * 2);
+    if (d.side === 'left') ctx.arc(d.x + d.w - 12, d.cy, 4, 0, Math.PI * 2);
+    else if (d.side === 'right') ctx.arc(d.x + 12, d.cy, 4, 0, Math.PI * 2);
+    else if (d.side === 'top') ctx.arc(d.cx, d.y + d.h - 12, 4, 0, Math.PI * 2);
+    else ctx.arc(d.cx, d.y + 12, 4, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -998,8 +1084,8 @@
     }
 
     if (state.doorOpen) {
-      var door = { x: W - 18 - 28, y: H / 2, r: 36 };
-      if (dist(state.player.x, state.player.y, door.x, door.y) < pr + door.r * 0.5) {
+      var door = doorGeom();
+      if (dist(state.player.x, state.player.y, door.cx, door.cy) < pr + door.r * 0.55) {
         if (!state.doorLatch) {
           state.doorLatch = true;
           tryDoor();
