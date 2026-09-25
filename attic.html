@@ -271,7 +271,8 @@
     saladInset: 34,
     saladClosing: false,
     saladCloseT: 0,
-    saladShouted: false
+    saladShouted: false,
+    burpChance: 0
   };
 
   function say(text) {
@@ -420,6 +421,7 @@
     state.saladClosing = false;
     state.saladCloseT = 0;
     state.saladShouted = false;
+    state.burpChance = 0;
     state.doorSide = 'right';
     state.player.x = W / 2;
     state.player.y = H / 2;
@@ -574,7 +576,7 @@
     if (state.nugsSinceShrink >= 15) {
       state.tooBig = true;
     }
-    playSlurp();
+    playNugMouth();
     var line = NUG_LINES[(Math.floor(state.score / 4) - 1) % NUG_LINES.length];
     if (state.roomNugs >= 5) {
       state.doorOpen = true;
@@ -606,7 +608,8 @@
     'sfx/door-open.wav',
     'sfx/dont-like-salad.wav',
     'sfx/belchertown.wav',
-    'sfx/nice.wav'
+    'sfx/nice.wav',
+    'sfx/burp.wav'
   ]);
 
   function ensureAudio() {
@@ -750,6 +753,27 @@
     playHtmlSfx(url, 0.95);
   }
 
+  function loadBurp() {
+    getSfxEl('sfx/burp.wav');
+  }
+
+  function playBurp() {
+    try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e1) {}
+    // Huge ripping burp owns the mic briefly.
+    playHtmlSfx('sfx/burp.wav', 1, { priority: true });
+  }
+
+  // Each nug: +1% cumulative chance of burp (1%, 2%, …) until it fires, then reset.
+  function playNugMouth() {
+    state.burpChance = (state.burpChance || 0) + 1;
+    if (Math.random() * 100 < state.burpChance) {
+      state.burpChance = 0;
+      playBurp();
+    } else {
+      playSlurp();
+    }
+  }
+
   function playDoorOpen() {
     try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e1) {}
     playHtmlSfx('sfx/door-open.wav', 1);
@@ -798,6 +822,8 @@
   function maybeNicePow() {
     if (profile.niceSeen) return;
     if (state.score < 69) return;
+    // First time over 69: pin score to exactly 69 for the NICE moment.
+    state.score = 69;
     profile.niceSeen = true;
     saveProfile();
     playNiceLine();
@@ -833,6 +859,7 @@
     loadSaladLine();
     loadBelchertownLine();
     loadNiceLine();
+    loadBurp();
     var p = pointerPos(e);
     // Drag anywhere on the canvas: finger need not be on the guy.
     // Offset keeps him from jumping under the pointer; he moves with the drag.
