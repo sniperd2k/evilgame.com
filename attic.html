@@ -2,155 +2,458 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Tic Tac Toe — EVILGAME</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>Attic Gaming — EVILGAME</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
-    min-height: 100%;
+    height: 100%;
     background: #0a0610;
     color: #c8f0c0;
     font-family: 'Press Start 2P', monospace;
+    overflow: hidden;
+    touch-action: none;
   }
   body {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 18px;
-    padding: 24px 16px;
+    gap: 10px;
+    padding: 10px;
   }
-  h1 {
-    font-size: clamp(12px, 3.5vw, 16px);
-    color: #7cff9a;
-    text-align: center;
-    line-height: 1.6;
-  }
-  .status {
-    font-size: 10px;
-    color: #a8d8a0;
-    min-height: 2.4em;
-    text-align: center;
-    line-height: 1.6;
-  }
-  .board {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    width: min(320px, 86vw);
-    aspect-ratio: 1;
-  }
-  .cell {
-    background: #12101c;
-    border: 3px solid #3a3550;
-    color: #7cff9a;
-    font-family: inherit;
-    font-size: clamp(28px, 10vw, 42px);
-    cursor: pointer;
+  .hud {
+    width: min(720px, 96vw);
     display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: clamp(8px, 2.2vw, 10px);
+    line-height: 1.5;
+    color: #7cff9a;
+  }
+  .hud span { color: #c8f0c0; }
+  #wrap {
+    position: relative;
+    width: min(720px, 96vw);
+    aspect-ratio: 4 / 3;
+    max-height: min(70vh, 540px);
+    border: 4px solid #3a3550;
+    box-shadow: 0 0 0 4px #1a1528, 0 0 40px rgba(80, 255, 120, 0.12);
+    background: #1a1410;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    cursor: grab;
+  }
+  canvas.dragging { cursor: grabbing; }
+  #msg {
+    width: min(720px, 96vw);
+    min-height: 3.2em;
+    font-size: clamp(8px, 2.2vw, 10px);
+    line-height: 1.6;
+    text-align: center;
+    color: #ffe08a;
+  }
+  .bar {
+    width: min(720px, 96vw);
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-    justify-content: center;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    box-shadow: inset 0 0 20px rgba(0,0,0,0.45);
+    gap: 12px;
   }
-  .cell:hover:not(:disabled) { border-color: #7cff9a; }
-  .cell:disabled { cursor: default; }
-  .cell.win { background: #1a3a24; border-color: #7cff9a; }
-  .actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-  button.btn {
+  a.back, button.reset {
     font-family: inherit;
-    font-size: 9px;
-    padding: 12px 16px;
-    background: #1a1528;
-    color: #c8f0c0;
-    border: 3px solid #3a3550;
-    cursor: pointer;
-  }
-  button.btn:hover { border-color: #7cff9a; color: #7cff9a; }
-  a.back {
     font-size: 8px;
     color: #6a8870;
     text-decoration: none;
+    background: transparent;
+    border: 2px solid #3a3550;
+    padding: 8px 10px;
+    cursor: pointer;
   }
-  a.back:hover { color: #7cff9a; }
+  a.back:hover, button.reset:hover { color: #7cff9a; border-color: #7cff9a; }
 </style>
 </head>
 <body>
-  <h1>TIC TAC TOE</h1>
-  <p class="status" id="status">X goes first</p>
-  <div class="board" id="board" aria-label="Tic tac toe board"></div>
-  <div class="actions">
-    <button type="button" class="btn" id="reset">NEW GAME</button>
+  <div class="hud">
+    <div>SCORE <span id="score">0</span></div>
+    <div>ROOM <span id="room">1</span></div>
+    <div>NUGS <span id="nugs">0</span>/5</div>
   </div>
-  <a class="back" href="index.html">← PROGRAM MENU</a>
+  <div id="wrap"><canvas id="c" width="640" height="480"></canvas></div>
+  <div id="msg">Drag your guy. Grab those McIntyre nugs.</div>
+  <div class="bar">
+    <a class="back" href="index.html">← PROGRAM MENU</a>
+    <button type="button" class="reset" id="reset">RESET</button>
+  </div>
 <script>
 (function () {
-  const wins = [
-    [0,1,2],[3,4,5],[6,7,8],
-    [0,3,6],[1,4,7],[2,5,8],
-    [0,4,8],[2,4,6]
-  ];
-  let cells = Array(9).fill(null);
-  let turn = 'X';
-  let over = false;
-  const board = document.getElementById('board');
-  const status = document.getElementById('status');
-  const buttons = [];
+  var W = 640, H = 480;
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var elScore = document.getElementById('score');
+  var elRoom = document.getElementById('room');
+  var elNugs = document.getElementById('nugs');
+  var elMsg = document.getElementById('msg');
 
-  function winner() {
-    for (const [a,b,c] of wins) {
-      if (cells[a] && cells[a] === cells[b] && cells[a] === cells[c]) {
-        return { mark: cells[a], line: [a,b,c] };
+  var NUG_LINES = [
+    'GOING TO GET ME MCINTYRE NUGGETS',
+    'GOOD MCINTYRE NUGS!',
+    'MMN THOSE MCINTYRE NUGS',
+    'MORE MCINTYRE PLEASE',
+    'NUG ACQUIRED — MCINTYRE STYLE'
+  ];
+
+  var state = {
+    score: 0,
+    room: 1,
+    roomNugs: 0,
+    nugsSinceShrink: 0,
+    size: 1,
+    doorOpen: false,
+    tooBig: false,
+    belchertown: false,
+    salad: 0,
+    nuggets: [],
+    player: { x: W / 2, y: H / 2 },
+    dragging: false,
+    dragOff: { x: 0, y: 0 },
+    doorLatch: false,
+    belchLatch: false
+  };
+
+  function say(text) {
+    elMsg.textContent = text;
+  }
+
+  function playerRadius() {
+    return 14 * state.size;
+  }
+
+  function dist(ax, ay, bx, by) {
+    var dx = ax - bx, dy = ay - by;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function hud() {
+    elScore.textContent = String(state.score);
+    elRoom.textContent = String(state.room);
+    elNugs.textContent = String(state.roomNugs);
+  }
+
+  function spawnNuggets() {
+    var spots = [
+      [120, 140], [320, 110], [520, 150],
+      [160, 340], [480, 360]
+    ];
+    var jitter = state.room * 3;
+    state.nuggets = spots.map(function (s, i) {
+      return {
+        x: s[0] + ((i * 17 + jitter) % 21) - 10,
+        y: s[1] + ((i * 11 + jitter) % 17) - 8,
+        r: 12,
+        eaten: false
+      };
+    });
+    state.player.x = W / 2;
+    state.player.y = H / 2;
+    state.doorLatch = false;
+    state.belchLatch = false;
+  }
+
+  function resetAll() {
+    state.score = 0;
+    state.room = 1;
+    state.roomNugs = 0;
+    state.nugsSinceShrink = 0;
+    state.size = 1;
+    state.doorOpen = false;
+    state.tooBig = false;
+    state.belchertown = false;
+    state.salad = 0;
+    spawnNuggets();
+    hud();
+    say('Drag your guy. Grab those McIntyre nugs.');
+  }
+
+  function enterNextRoom() {
+    state.room += 1;
+    state.roomNugs = 0;
+    state.doorOpen = false;
+    spawnNuggets();
+    hud();
+    say('SAME ATTIC. NEW NUGS. ROOM ' + state.room);
+  }
+
+  function tryDoor() {
+    if (!state.doorOpen) return;
+    if (state.tooBig || state.nugsSinceShrink >= 15) {
+      state.tooBig = true;
+      state.belchertown = true;
+      say('WELL. I GUESS IT WAS WORTH LOSING MY FRIENDS OVER. BETTER RUN TO BELCHERTOWN.');
+      return;
+    }
+    enterNextRoom();
+  }
+
+  function hitBelchertown() {
+    if (!state.belchertown) return;
+    state.salad = 90;
+    state.size = 1;
+    state.nugsSinceShrink = 0;
+    state.tooBig = false;
+    state.belchertown = false;
+    say('SALAD EXPLOSION!!! COVERED. BACK TO NORMAL SIZE. DOOR FITS AGAIN.');
+  }
+
+  function eatNug(n) {
+    n.eaten = true;
+    state.score += 5;
+    state.roomNugs += 1;
+    state.nugsSinceShrink += 1;
+    state.size = 1 + state.nugsSinceShrink * 0.12;
+    if (state.nugsSinceShrink >= 15) {
+      state.tooBig = true;
+    }
+    var line = NUG_LINES[(Math.floor(state.score / 5) - 1) % NUG_LINES.length];
+    if (state.roomNugs >= 5) {
+      state.doorOpen = true;
+      say(line + ' — DOOR UNLOCKED. DRAG THROUGH IT.');
+    } else {
+      say(line);
+    }
+    hud();
+  }
+
+  function pointerPos(e) {
+    var rect = canvas.getBoundingClientRect();
+    var src = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
+    return {
+      x: (src.clientX - rect.left) * (W / rect.width),
+      y: (src.clientY - rect.top) * (H / rect.height)
+    };
+  }
+
+  function onDown(e) {
+    e.preventDefault();
+    var p = pointerPos(e);
+    var r = playerRadius();
+    if (dist(p.x, p.y, state.player.x, state.player.y) <= r + 18) {
+      state.dragging = true;
+      canvas.classList.add('dragging');
+      state.dragOff.x = state.player.x - p.x;
+      state.dragOff.y = state.player.y - p.y;
+    }
+  }
+
+  function onMove(e) {
+    if (!state.dragging) return;
+    e.preventDefault();
+    var p = pointerPos(e);
+    var r = playerRadius();
+    var x = p.x + state.dragOff.x;
+    var y = p.y + state.dragOff.y;
+    x = Math.max(r + 8, Math.min(W - r - 8, x));
+    y = Math.max(r + 28, Math.min(H - r - 8, y));
+    state.player.x = x;
+    state.player.y = y;
+  }
+
+  function onUp(e) {
+    if (!state.dragging) return;
+    e.preventDefault();
+    state.dragging = false;
+    canvas.classList.remove('dragging');
+  }
+
+  canvas.addEventListener('mousedown', onDown);
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+  canvas.addEventListener('touchstart', onDown, { passive: false });
+  window.addEventListener('touchmove', onMove, { passive: false });
+  window.addEventListener('touchend', onUp, { passive: false });
+  document.getElementById('reset').addEventListener('click', resetAll);
+
+  function drawAttic() {
+    ctx.fillStyle = '#2a1e14';
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = '#3a2a1c';
+    ctx.lineWidth = 2;
+    for (var y = 40; y < H; y += 28) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#1a120c';
+    ctx.fillRect(0, 0, W, 36);
+    ctx.strokeStyle = '#4a3828';
+    for (var x = 0; x < W; x += 80) {
+      ctx.beginPath();
+      ctx.moveTo(x, 36);
+      ctx.lineTo(x + 40, 120);
+      ctx.lineTo(x + 80, 36);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = '#5a4838';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(6, 36, W - 12, H - 42);
+
+    // dusty label
+    ctx.fillStyle = '#6a5848';
+    ctx.font = '8px "Press Start 2P"';
+    ctx.fillText('ATTIC GAMING', 16, 24);
+  }
+
+  function drawDoor() {
+    if (!state.doorOpen) return;
+    var doorW = 56, doorH = 90;
+    var x = W - 18 - doorW;
+    var y = H / 2 - doorH / 2;
+    ctx.fillStyle = state.tooBig ? '#4a2030' : '#3a5a28';
+    ctx.fillRect(x, y, doorW, doorH);
+    ctx.strokeStyle = '#7cff9a';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x, y, doorW, doorH);
+    ctx.fillStyle = '#c8f0c0';
+    ctx.font = '8px "Press Start 2P"';
+    ctx.fillText('DOOR', x + 10, y - 8);
+    ctx.fillStyle = '#ffe08a';
+    ctx.beginPath();
+    ctx.arc(x + doorW - 12, y + doorH / 2, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawBelchertown() {
+    if (!state.belchertown) return;
+    var x = 8, y = H / 2 - 50, w = 28, h = 100;
+    ctx.fillStyle = '#203050';
+    ctx.fillRect(x, y, w, h);
+    ctx.save();
+    ctx.translate(x + 20, y + 90);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = '#9ec8ff';
+    ctx.font = '8px "Press Start 2P"';
+    ctx.fillText('BELCHERTOWN', 0, 0);
+    ctx.restore();
+  }
+
+  function drawNugget(n) {
+    if (n.eaten) return;
+    ctx.fillStyle = '#c47a28';
+    ctx.beginPath();
+    ctx.ellipse(n.x, n.y, n.r, n.r * 0.75, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#e8b060';
+    ctx.beginPath();
+    ctx.ellipse(n.x - 2, n.y - 2, n.r * 0.45, n.r * 0.35, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawPlayer() {
+    var p = state.player;
+    var s = state.size;
+    var bodyH = 28 * s;
+    var bodyW = 14 * s;
+    ctx.fillStyle = state.salad > 0 ? '#8fbf6a' : '#e8b4c8';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y - bodyH * 0.15, bodyW * 0.55, bodyH * 0.55, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y - bodyH * 0.55, bodyW * 0.65, bodyW * 0.7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(p.x - bodyW * 0.45, p.y + bodyH * 0.25, bodyW * 0.5, bodyW * 0.4, 0, 0, Math.PI * 2);
+    ctx.ellipse(p.x + bodyW * 0.45, p.y + bodyH * 0.25, bodyW * 0.5, bodyW * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#1a0610';
+    ctx.beginPath();
+    ctx.arc(p.x - 3 * s, p.y - bodyH * 0.6, Math.max(1.2, 1.5 * s), 0, Math.PI * 2);
+    ctx.arc(p.x + 3 * s, p.y - bodyH * 0.6, Math.max(1.2, 1.5 * s), 0, Math.PI * 2);
+    ctx.fill();
+    if (state.salad > 0) {
+      ctx.fillStyle = '#c8f080';
+      for (var i = 0; i < 8; i++) {
+        var a = (i / 8) * Math.PI * 2 + state.salad * 0.05;
+        var rr = bodyH * 0.7;
+        ctx.fillRect(p.x + Math.cos(a) * rr - 2, p.y + Math.sin(a) * rr - 2, 4, 4);
       }
     }
-    return null;
   }
 
-  function render() {
-    const w = winner();
-    buttons.forEach((btn, i) => {
-      btn.textContent = cells[i] || '';
-      btn.disabled = over || cells[i] !== null;
-      btn.classList.toggle('win', !!(w && w.line.includes(i)));
-    });
-    if (w) {
-      over = true;
-      status.textContent = w.mark + ' wins!';
-    } else if (cells.every(Boolean)) {
-      over = true;
-      status.textContent = "It's a draw.";
-    } else {
-      status.textContent = turn + ' goes next';
+  function drawSaladBurst() {
+    if (state.salad <= 0) return;
+    var t = state.salad;
+    ctx.fillStyle = 'rgba(140, 200, 80,' + (t / 90) + ')';
+    for (var i = 0; i < 24; i++) {
+      var a = (i / 24) * Math.PI * 2;
+      var d = (90 - t) * 3 + (i % 5) * 8;
+      ctx.fillRect(
+        state.player.x + Math.cos(a) * d - 4,
+        state.player.y + Math.sin(a) * d - 4,
+        8, 6
+      );
+    }
+    ctx.fillStyle = '#e8ffe0';
+    ctx.font = '10px "Press Start 2P"';
+    ctx.textAlign = 'center';
+    ctx.fillText("SALAD!!!!", W / 2, 70);
+    ctx.textAlign = 'left';
+  }
+
+  function update() {
+    if (state.salad > 0) state.salad--;
+
+    var pr = playerRadius();
+    for (var i = 0; i < state.nuggets.length; i++) {
+      var n = state.nuggets[i];
+      if (!n.eaten && dist(state.player.x, state.player.y, n.x, n.y) < pr + n.r) {
+        eatNug(n);
+      }
+    }
+
+    if (state.doorOpen) {
+      var door = { x: W - 18 - 28, y: H / 2, r: 36 };
+      if (dist(state.player.x, state.player.y, door.x, door.y) < pr + door.r * 0.5) {
+        if (!state.doorLatch) {
+          state.doorLatch = true;
+          tryDoor();
+        }
+      } else {
+        state.doorLatch = false;
+      }
+    }
+
+    if (state.belchertown) {
+      var b = { x: 22, y: H / 2, r: 40 };
+      if (dist(state.player.x, state.player.y, b.x, b.y) < pr + b.r * 0.5) {
+        if (!state.belchLatch) {
+          state.belchLatch = true;
+          hitBelchertown();
+        }
+      } else {
+        state.belchLatch = false;
+      }
     }
   }
 
-  function play(i) {
-    if (over || cells[i]) return;
-    cells[i] = turn;
-    turn = turn === 'X' ? 'O' : 'X';
-    render();
+  function frame() {
+    update();
+    drawAttic();
+    for (var i = 0; i < state.nuggets.length; i++) drawNugget(state.nuggets[i]);
+    drawDoor();
+    drawBelchertown();
+    drawPlayer();
+    drawSaladBurst();
+    requestAnimationFrame(frame);
   }
 
-  function reset() {
-    cells = Array(9).fill(null);
-    turn = 'X';
-    over = false;
-    render();
-  }
-
-  for (let i = 0; i < 9; i++) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'cell';
-    btn.setAttribute('aria-label', 'Cell ' + (i + 1));
-    btn.addEventListener('click', () => play(i));
-    board.appendChild(btn);
-    buttons.push(btn);
-  }
-  document.getElementById('reset').addEventListener('click', reset);
-  render();
+  resetAll();
+  requestAnimationFrame(frame);
 })();
 </script>
 </body>
