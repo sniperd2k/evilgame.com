@@ -159,6 +159,25 @@
     line-height: 1.6;
   }
   .updated .dim { color: #8a8098; }
+  html, body {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  @media (max-width: 720px), (pointer: coarse) {
+    .crt { padding: 14px 10px 12px; width: min(640px, 96vw); }
+    .logo { font-size: 11px; }
+    .item {
+      min-height: 48px;
+      padding: 12px 10px;
+      gap: 8px;
+    }
+    .item .name { font-size: 8px; }
+    .item .tag { font-size: 6px; }
+    .footer { font-size: 6px; }
+    .footer .desk { display: none; }
+    .footer .mob { display: inline; }
+  }
+  .footer .mob { display: none; }
 </style>
 </head>
 <body>
@@ -170,7 +189,7 @@
     </div>
     <ul class="menu" id="menu"></ul>
     <div class="footer">
-      <span>↑↓ SELECT · ENTER RUN · ESC BEEP</span>
+      <span><span class="desk">↑↓ SELECT · ENTER RUN · ESC BEEP</span><span class="mob">TAP A PROGRAM TO RUN</span></span>
       <span>SHIP THE CHEDDAR</span>
     </div>
   </div>
@@ -286,17 +305,33 @@
         selected = i;
         render();
       });
-      el.addEventListener('click', function (ev) {
+      function activate(ev) {
         selected = i;
         if (!p.live) {
-          ev.preventDefault();
+          if (ev) ev.preventDefault();
           beep(220, 0.08);
           showToast(p.blurb || 'Coming soon!');
           render();
+          return false;
+        }
+        beep(660, 0.05);
+        return true;
+      }
+      el.addEventListener('click', function (ev) {
+        if (!p.live) {
+          ev.preventDefault();
+          activate(ev);
         } else {
           beep(660, 0.05);
         }
       });
+      el.addEventListener('touchend', function (ev) {
+        // let live links navigate; block double-firing toast on soon items
+        if (!p.live) {
+          ev.preventDefault();
+          activate(ev);
+        }
+      }, { passive: false });
       li.appendChild(el);
       menu.appendChild(li);
     });
