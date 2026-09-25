@@ -163,7 +163,7 @@
 
   function initDoors() {
     doors = doorDefs.map((d, id) => ({
-      x: d.x, y: d.y, w: 2, h: 2, open: false, id
+      x: d.x, y: d.y, w: 4, h: 4, open: false, id
     }));
     document.getElementById('doorsMax').textContent = String(doors.length);
   }
