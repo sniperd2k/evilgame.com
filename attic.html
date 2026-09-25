@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
 <title>PICKLE ATTIC — evilgame.com</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
@@ -29,12 +31,22 @@
     color: #7dff9a;
     text-shadow: 2px 2px 0 #1a3d22;
   }
+  #gameShell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 100vw;
+    padding: 0 8px;
+  }
   #wrap {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
     border: 4px solid #3a2a18;
     box-shadow: 0 0 0 4px #1a1208, 8px 8px 0 #000;
     background: #1a1208;
+    touch-action: none;
   }
   canvas {
     display: block;
@@ -43,10 +55,12 @@
     max-width: 95vw;
     max-height: 70vh;
     background: #2a1c10;
+    touch-action: none;
+    cursor: crosshair;
   }
   #hud {
     display: flex;
-    gap: 20px;
+    gap: 16px;
     font-size: 10px;
     color: #f0e6c8;
     flex-wrap: wrap;
@@ -61,43 +75,25 @@
     max-width: 640px;
   }
   a { color: #7dff9a; }
-  #gameShell {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    max-width: 100vw;
-    padding: 0 8px;
-  }
   #pad {
     display: none;
     width: min(640px, 95vw);
     margin-top: 4px;
     gap: 12px;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     touch-action: none;
   }
   .pad-show #pad { display: flex; }
   .pad-show #hint .desk { display: none; }
   .pad-show #hint .mob { display: inline; }
   #hint .mob { display: none; }
-  .dpad {
-    display: grid;
-    grid-template-columns: 56px 56px 56px;
-    grid-template-rows: 56px 56px 56px;
-    gap: 4px;
-  }
-  .dpad .spacer { visibility: hidden; }
   .btn {
-    width: 56px;
-    height: 56px;
     border: 3px solid #7dff9a;
     background: rgba(20, 40, 24, 0.85);
     color: #7dff9a;
     font-family: inherit;
-    font-size: 14px;
+    font-size: 10px;
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -105,27 +101,18 @@
     touch-action: none;
     -webkit-tap-highlight-color: transparent;
     box-shadow: 0 0 0 2px #1a1208;
+    width: 96px;
+    height: 56px;
+    line-height: 1.3;
+    text-align: center;
   }
   .btn:active, .btn.held {
     background: rgba(125, 255, 154, 0.35);
     color: #fff;
   }
-  .actions {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .btn.action {
-    width: 88px;
-    height: 64px;
-    font-size: 10px;
-    line-height: 1.3;
-    text-align: center;
-  }
   .btn.reset {
     border-color: #b09040;
     color: #f0d080;
-    height: 48px;
   }
   .btn.reset:active, .btn.reset.held {
     background: rgba(176, 144, 64, 0.35);
@@ -133,11 +120,11 @@
   @media (max-width: 720px), (pointer: coarse) {
     body { justify-content: flex-start; padding-top: 8px; gap: 6px; overflow: auto; }
     h1 { font-size: 11px; }
-    #hud { font-size: 8px; gap: 12px; }
+    #hud { font-size: 8px; gap: 10px; }
     canvas {
       width: min(95vw, 100%);
       height: auto;
-      max-height: 42vh;
+      max-height: 52vh;
       aspect-ratio: 4 / 3;
     }
     #pad { display: flex; }
@@ -145,43 +132,25 @@
     #hint .desk { display: none; }
     #hint .mob { display: inline; }
   }
-  @media (orientation: landscape) and (max-height: 500px) {
-    canvas { max-height: 55vh; }
-    .dpad { grid-template-columns: 48px 48px 48px; grid-template-rows: 48px 48px 48px; }
-    .btn { width: 48px; height: 48px; }
-    .btn.action { width: 72px; height: 52px; font-size: 9px; }
-  }
 </style>
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="mobile-web-app-capable" content="yes" />
 </head>
 <body>
   <div id="gameShell">
   <h1>PICKLE ATTIC</h1>
   <div id="hud">
     <span>SCORE <b id="score">0</b></span>
-    <span>NUGS <b id="nugs">0</b></span>
+    <span>NUGS <b id="nugs">0</b>/5</span>
     <span>DOORS <b id="doors">0</b>/<span id="doorsMax">0</span></span>
   </div>
   <div id="wrap"><canvas id="c" width="320" height="240"></canvas></div>
-  <div id="pad" aria-label="touch controls">
-    <div class="dpad">
-      <div class="spacer"></div>
-      <button type="button" class="btn" data-dir="up" aria-label="up">▲</button>
-      <div class="spacer"></div>
-      <button type="button" class="btn" data-dir="left" aria-label="left">◀</button>
-      <button type="button" class="btn" data-dir="down" aria-label="down">▼</button>
-      <button type="button" class="btn" data-dir="right" aria-label="right">▶</button>
-    </div>
-    <div class="actions">
-      <button type="button" class="btn action" id="btnOpen" aria-label="open door">OPEN</button>
-      <button type="button" class="btn action reset" id="btnReset" aria-label="reset">RESET</button>
-    </div>
+  <div id="pad" aria-label="touch actions">
+    <button type="button" class="btn" id="btnOpen" aria-label="open door">OPEN</button>
+    <button type="button" class="btn reset" id="btnReset" aria-label="reset">RESET</button>
   </div>
   <p id="hint">
-    <span class="desk">ARROWS / WASD move · SPACE / E open door · R reset<br/></span>
-    <span class="mob">D-PAD move · OPEN door · RESET<br/></span>
-  Grab chicken nuggets. Open giant doors. Watch for salad.<br/>
+    <span class="desk">ARROWS / WASD move · SPACE / E open · R reset<br/></span>
+    <span class="mob">DRAG the pickle · OPEN door · RESET<br/></span>
+  Eat 5 McIntyre nugs to grow big enough for a door. Salad shrinks you!<br/>
   <a href="index.html">back</a></p>
   </div>
 <script>
@@ -193,9 +162,8 @@
   const TILE = 16;
   const COLS = 20;
   const ROWS = 15;
+  const NUGS_TO_OPEN = 5;
 
-  // 0 floor, 1 wall, 2 crate, 3 window, 6 rug
-  // Doors are separate multi-tile objects (2x2 = 4x original footprint)
   const map = [
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
     [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
@@ -214,12 +182,11 @@
     [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
   ];
 
-  // Each door is 4x4 tiles (4x each side vs old 1-tile door)
   const doorDefs = [
-    { x: 8, y: 1 },   // top
-    { x: 1, y: 5 },   // left
-    { x: 15, y: 5 },  // right
-    { x: 8, y: 10 },  // bottom
+    { x: 8, y: 1 },
+    { x: 1, y: 5 },
+    { x: 15, y: 5 },
+    { x: 8, y: 10 },
   ];
 
   const SALADS = [
@@ -235,22 +202,32 @@
   let particles = [];
   let score = 0;
   let openedCount = 0;
-  let nugCount = 0;
+  let nugHeld = 0; // 0..5 bank toward opening
   let flash = 0;
-  let msg = 'nuggets + doors. go pickle!';
+  let msg = 'eat 5 nugs to open a door!';
   let msgTimer = 160;
   let spawnTimer = 40;
   const keys = Object.create(null);
+  const drag = { active: false, x: 0, y: 0 };
 
   const player = {
     x: 10 * TILE + 4,
     y: 8 * TILE + 4,
-    w: 10,
-    h: 12,
+    baseW: 10,
+    baseH: 12,
     speed: 1.15,
     facing: 1,
     bob: 0,
   };
+
+  function nugScale() {
+    // grow with each nug until 5 (door-ready)
+    return 1 + nugHeld * 0.22;
+  }
+  function playerSize() {
+    const s = nugScale();
+    return { w: Math.round(player.baseW * s), h: Math.round(player.baseH * s) };
+  }
 
   const dust = Array.from({ length: 28 }, () => ({
     x: Math.random() * 320,
@@ -273,6 +250,9 @@
       g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
       o.stop(audioCtx.currentTime + dur);
     } catch (_) {}
+  }
+  function unlockAudio() {
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
   }
 
   function initDoors() {
@@ -311,10 +291,14 @@
   }
 
   function tryMove(dx, dy) {
+    const { w, h } = playerSize();
     let nx = player.x + dx;
     let ny = player.y + dy;
-    if (!rectHitsSolid(nx, player.y, player.w, player.h)) player.x = nx;
-    if (!rectHitsSolid(player.x, ny, player.w, player.h)) player.y = ny;
+    if (!rectHitsSolid(nx, player.y, w, h)) player.x = nx;
+    if (!rectHitsSolid(player.x, ny, w, h)) player.y = ny;
+    // keep on screen
+    player.x = Math.max(TILE, Math.min(player.x, COLS * TILE - w - TILE));
+    player.y = Math.max(TILE, Math.min(player.y, ROWS * TILE - h - TILE));
   }
 
   function isWalkableTile(tx, ty) {
@@ -334,7 +318,8 @@
       const px = tx * TILE + 4;
       const py = ty * TILE + 4;
       const tooClose = nuggets.some(n => Math.hypot(n.x - px, n.y - py) < 20);
-      const onPlayer = Math.hypot(px - player.x, py - player.y) < 24;
+      const { w, h } = playerSize();
+      const onPlayer = Math.hypot(px - player.x, py - player.y) < 28;
       if (tooClose || onPlayer) continue;
       nuggets.push({ x: px, y: py, bob: Math.random() * Math.PI * 2, life: 900 });
       return;
@@ -342,10 +327,11 @@
   }
 
   function nearDoor() {
-    const cx = player.x + player.w / 2;
-    const cy = player.y + player.h / 2;
+    const { w, h } = playerSize();
+    const cx = player.x + w / 2;
+    const cy = player.y + h / 2;
     let best = null;
-    let bestD = 40; // bigger reach for bigger doors
+    let bestD = 40;
     for (const d of doors) {
       if (d.open) continue;
       const dx = (d.x + d.w / 2) * TILE - cx;
@@ -354,6 +340,22 @@
       if (dist < bestD) { bestD = dist; best = d; }
     }
     return best;
+  }
+
+  function shutAllDoors() {
+    for (const d of doors) {
+      d.open = false;
+    }
+    openedCount = 0;
+    syncHud();
+  }
+
+  function shrinkFromSalad() {
+    nugHeld = 0;
+    syncHud();
+    shutAllDoors();
+    spills = [];
+    // shrink visual is automatic via nugHeld
   }
 
   function spillSalad(door) {
@@ -367,7 +369,6 @@
       h: 22,
       salad,
       life: 360,
-      slip: 0.55,
     });
     for (let i = 0; i < 18; i++) {
       particles.push({
@@ -379,16 +380,44 @@
         color: Math.random() > 0.5 ? salad.color : salad.bits,
       });
     }
+    shrinkFromSalad();
     msg = "I DON'T EVEN LIKE SALAD";
-    msgTimer = 110;
+    msgTimer = 140;
     beep(180, 0.1, 'sawtooth', 0.05);
     beep(140, 0.14, 'sawtooth', 0.04);
+    setTimeout(() => {
+      if (msgTimer > 0) {
+        msg = 'SHRINK! ALL DOORS SHUT — EAT NUGS!';
+        msgTimer = 140;
+      }
+    }, 900);
+  }
+
+  function tryOpenDoor() {
+    const d = nearDoor();
+    if (!d) {
+      msg = 'GET CLOSER TO A DOOR';
+      msgTimer = 70;
+      beep(160, 0.06);
+      return;
+    }
+    if (nugHeld < NUGS_TO_OPEN) {
+      const need = NUGS_TO_OPEN - nugHeld;
+      msg = 'NEED MORE NUGS! (' + need + ' MORE)';
+      msgTimer = 100;
+      beep(120, 0.1);
+      beep(100, 0.08);
+      return;
+    }
+    openDoor(d);
   }
 
   function openDoor(d) {
     if (!d || d.open) return;
+    // spend the 5 nugs — shrink a bit until you eat again (unless salad resets fully)
+    nugHeld = 0;
     d.open = true;
-    openedCount++;
+    openedCount = doors.filter(x => x.open).length;
     const pts = 100 + openedCount * 25;
     score += pts;
     flash = 12;
@@ -397,9 +426,10 @@
     syncHud();
     beep(220, 0.06); beep(330, 0.08); beep(440, 0.1);
 
-    // Sometimes (1 of 4) a salad spills out
+    // 1-in-4 salad spill → shrink + shut all doors
     if ((Math.random() * 4 | 0) === 0) {
       spillSalad(d);
+      return;
     }
 
     if (openedCount >= doors.length) {
@@ -414,7 +444,7 @@
   function syncHud() {
     document.getElementById('score').textContent = String(score);
     document.getElementById('doors').textContent = String(openedCount);
-    document.getElementById('nugs').textContent = String(nugCount);
+    document.getElementById('nugs').textContent = String(nugHeld);
   }
 
   function resetGame() {
@@ -426,40 +456,61 @@
     player.y = 8 * TILE + 4;
     score = 0;
     openedCount = 0;
-    nugCount = 0;
+    nugHeld = 0;
     flash = 0;
     spawnTimer = 20;
-    msg = 'attic reset. chase those nugs!';
+    msg = 'attic reset. eat those McIntyre nugs!';
     msgTimer = 120;
     syncHud();
     for (let i = 0; i < 3; i++) spawnNugget();
     beep(160, 0.08);
   }
 
-  const touch = { up: false, down: false, left: false, right: false };
-
-  function unlockAudio() {
-    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-  }
-
   window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
-    if (e.code === 'Space' || e.code === 'KeyE') openDoor(nearDoor());
+    if (e.code === 'Space' || e.code === 'KeyE') tryOpenDoor();
     if (e.code === 'KeyR') resetGame();
     unlockAudio();
   });
   window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
-  // On-screen / touch controls (iOS + Android)
-  const dirMap = {
-    up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight'
-  };
-  function setDir(dir, on) {
-    touch[dir] = on;
-    const code = dirMap[dir];
-    if (code) keys[code] = on;
+  // Canvas drag-to-move (phone)
+  function canvasPos(ev) {
+    const rect = canvas.getBoundingClientRect();
+    const t = (ev.touches && ev.touches[0]) || (ev.changedTouches && ev.changedTouches[0]) || ev;
+    return {
+      x: ((t.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((t.clientY - rect.top) / rect.height) * canvas.height,
+    };
   }
+  function onDragStart(ev) {
+    ev.preventDefault();
+    unlockAudio();
+    drag.active = true;
+    const p = canvasPos(ev);
+    drag.x = p.x;
+    drag.y = p.y;
+  }
+  function onDragMove(ev) {
+    if (!drag.active) return;
+    ev.preventDefault();
+    const p = canvasPos(ev);
+    drag.x = p.x;
+    drag.y = p.y;
+  }
+  function onDragEnd(ev) {
+    if (ev) ev.preventDefault();
+    drag.active = false;
+  }
+  canvas.addEventListener('touchstart', onDragStart, { passive: false });
+  canvas.addEventListener('touchmove', onDragMove, { passive: false });
+  canvas.addEventListener('touchend', onDragEnd, { passive: false });
+  canvas.addEventListener('touchcancel', onDragEnd, { passive: false });
+  canvas.addEventListener('mousedown', onDragStart);
+  window.addEventListener('mousemove', (e) => { if (drag.active) onDragMove(e); });
+  window.addEventListener('mouseup', onDragEnd);
+
   function bindHold(el, onStart, onEnd) {
     const start = (ev) => {
       ev.preventDefault();
@@ -479,23 +530,13 @@
     el.addEventListener('mouseup', end);
     el.addEventListener('mouseleave', end);
   }
-  document.querySelectorAll('#pad [data-dir]').forEach((btn) => {
-    const dir = btn.getAttribute('data-dir');
-    bindHold(btn, () => setDir(dir, true), () => setDir(dir, false));
-  });
-  bindHold(document.getElementById('btnOpen'), () => {
-    openDoor(nearDoor());
-  }, () => {});
-  bindHold(document.getElementById('btnReset'), () => {
-    resetGame();
-  }, () => {});
+  bindHold(document.getElementById('btnOpen'), () => tryOpenDoor(), () => {});
+  bindHold(document.getElementById('btnReset'), () => resetGame(), () => {});
 
-  // Prevent page scroll / pull-to-refresh while playing
   document.addEventListener('touchmove', (e) => {
     if (e.target.closest('#pad, #wrap, canvas')) e.preventDefault();
   }, { passive: false });
 
-  // Show pads on coarse pointers even if CSS media misses
   if (window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window) {
     document.body.classList.add('pad-show');
   }
@@ -553,7 +594,6 @@
     const y = d.y * TILE;
     const w = d.w * TILE;
     const h = d.h * TILE;
-    // floor under door
     for (let ty = d.y; ty < d.y + d.h; ty++) {
       for (let tx = d.x; tx < d.x + d.w; tx++) {
         ctx.fillStyle = (tx + ty) % 2 ? '#3b2918' : '#342314';
@@ -567,11 +607,9 @@
       ctx.fillRect(x + 3, y + 3, w - 6, h - 6);
       ctx.fillStyle = '#8a5028';
       ctx.fillRect(x + 5, y + 5, w - 10, h - 10);
-      // panels
       ctx.fillStyle = '#4a2810';
       ctx.fillRect(x + 6, y + 6, (w / 2) - 8, h - 14);
       ctx.fillRect(x + w / 2 + 2, y + 6, (w / 2) - 8, h - 14);
-      // knob (big)
       ctx.fillStyle = '#d4a84a';
       ctx.fillRect(x + w - 10, y + h / 2 - 2, 4, 4);
       ctx.fillStyle = '#2a1808';
@@ -583,9 +621,6 @@
       ctx.fillStyle = '#5a3018';
       ctx.fillRect(x + 2, y + 2, 4, h - 4);
       ctx.fillRect(x + w - 6, y + 2, 4, h - 4);
-      ctx.fillStyle = '#7a4820';
-      ctx.fillRect(x + 2, y + 2, 4, 3);
-      ctx.fillRect(x + w - 6, y + 2, 4, 3);
     }
   }
 
@@ -614,35 +649,39 @@
     ctx.fillRect((s.x + 4) | 0, (s.y + 3) | 0, 3, 3);
     ctx.fillRect((s.x + 14) | 0, (s.y + 8) | 0, 4, 2);
     ctx.fillRect((s.x + 8) | 0, (s.y + 14) | 0, 3, 3);
-    ctx.fillRect((s.x + 18) | 0, (s.y + 4) | 0, 2, 2);
     ctx.globalAlpha = 1;
   }
 
   function drawPickle(px, py) {
+    const s = nugScale();
     const bob = Math.sin(player.bob) * 1;
+    const { w, h } = playerSize();
     const x = Math.round(px);
     const y = Math.round(py + bob);
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(x + 1, y + 11, 8, 2);
+    ctx.fillRect(x + 1, y + h - 1, w - 2, 2);
     ctx.fillStyle = '#3d8f3a';
-    ctx.fillRect(x + 2, y + 2, 6, 9);
+    ctx.fillRect(x + 1, y + 2, w - 2, h - 3);
     ctx.fillStyle = '#56b84a';
-    ctx.fillRect(x + 3, y + 3, 4, 7);
+    ctx.fillRect(x + 2, y + 3, w - 4, h - 5);
     ctx.fillStyle = '#2f6e2c';
-    ctx.fillRect(x + 2, y + 4, 2, 2);
-    ctx.fillRect(x + 6, y + 6, 2, 2);
-    ctx.fillRect(x + 3, y + 8, 2, 1);
+    ctx.fillRect(x + 2, y + 4, Math.max(2, (w / 4) | 0), 2);
+    ctx.fillRect(x + w - 4, y + 6, Math.max(2, (w / 4) | 0), 2);
     ctx.fillStyle = '#6b3a12';
-    ctx.fillRect(x + 4, y, 2, 2);
+    ctx.fillRect(x + (w / 2 | 0) - 1, y, 2, 2);
     ctx.fillStyle = '#4a8f2a';
-    ctx.fillRect(x + 6, y, 2, 1);
-    const eyeX = player.facing > 0 ? x + 5 : x + 3;
+    ctx.fillRect(x + (w / 2 | 0) + 1, y, 2, 1);
+    const eyeX = player.facing > 0 ? x + w - 4 : x + 2;
     ctx.fillStyle = '#102010';
-    ctx.fillRect(eyeX, y + 5, 2, 2);
+    ctx.fillRect(eyeX, y + (h / 3 | 0) + 1, 2, 2);
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(eyeX, y + 5, 1, 1);
+    ctx.fillRect(eyeX, y + (h / 3 | 0) + 1, 1, 1);
     ctx.fillStyle = '#1a4018';
-    ctx.fillRect(x + 4, y + 8, 3, 1);
+    ctx.fillRect(x + (w / 2 | 0) - 1, y + h - 5, 3, 1);
+    if (nugHeld >= NUGS_TO_OPEN) {
+      ctx.fillStyle = '#ffd24a';
+      ctx.fillRect(x, y - 3, w, 1);
+    }
   }
 
   function drawMoonlight() {
@@ -654,7 +693,7 @@
   function drawUI() {
     if (msgTimer > 0) {
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect(16, 210, 288, 22);
+      ctx.fillRect(8, 210, 304, 22);
       ctx.fillStyle = '#ffd24a';
       ctx.font = '8px monospace';
       ctx.textAlign = 'center';
@@ -663,9 +702,13 @@
     }
     const d = nearDoor();
     if (d) {
-      ctx.fillStyle = '#7dff9a';
+      ctx.fillStyle = nugHeld >= NUGS_TO_OPEN ? '#7dff9a' : '#b09040';
       ctx.font = '8px monospace';
-      ctx.fillText('SPACE: OPEN', Math.round(d.x * TILE + 2), Math.round(d.y * TILE - 2));
+      ctx.fillText(
+        nugHeld >= NUGS_TO_OPEN ? 'OPEN READY' : 'NEED ' + (NUGS_TO_OPEN - nugHeld) + ' NUGS',
+        Math.round(d.x * TILE + 2),
+        Math.round(d.y * TILE - 2)
+      );
     }
     if (flash > 0) {
       ctx.fillStyle = `rgba(255,220,100,${flash / 20})`;
@@ -674,10 +717,9 @@
   }
 
   function onSpill(px, py) {
+    const { w, h } = playerSize();
     for (const s of spills) {
-      if (px + player.w > s.x && px < s.x + s.w && py + player.h > s.y && py < s.y + s.h) {
-        return s;
-      }
+      if (px + w > s.x && px < s.x + s.w && py + h > s.y && py < s.y + s.h) return s;
     }
     return null;
   }
@@ -688,13 +730,29 @@
     if (keys.ArrowRight || keys.KeyD) { dx += player.speed; player.facing = 1; }
     if (keys.ArrowUp || keys.KeyW) dy -= player.speed;
     if (keys.ArrowDown || keys.KeyS) dy += player.speed;
+
+    // Drag toward finger / cursor
+    if (drag.active) {
+      const { w, h } = playerSize();
+      const cx = player.x + w / 2;
+      const cy = player.y + h / 2;
+      const tx = drag.x - cx;
+      const ty = drag.y - cy;
+      const dist = Math.hypot(tx, ty);
+      if (dist > 2) {
+        const spd = Math.min(player.speed * 1.35, dist * 0.2);
+        dx += (tx / dist) * spd;
+        dy += (ty / dist) * spd;
+        if (tx !== 0) player.facing = tx > 0 ? 1 : -1;
+      }
+    }
+
     if (dx && dy) { dx *= 0.707; dy *= 0.707; }
 
     const slip = onSpill(player.x, player.y);
     if (slip) {
       dx *= 1.35;
       dy *= 1.35;
-      // wobble
       dx += Math.sin(player.bob * 2) * 0.4;
     }
 
@@ -711,27 +769,29 @@
       if (p.y > 240) { p.y = 0; p.x = Math.random() * 320; }
     }
 
-    // nuggets
     spawnTimer--;
     if (spawnTimer <= 0) {
       spawnNugget();
-      spawnTimer = 50 + (Math.random() * 40 | 0);
+      spawnTimer = 45 + (Math.random() * 35 | 0);
     }
+
+    const { w, h } = playerSize();
     for (let i = nuggets.length - 1; i >= 0; i--) {
       const n = nuggets[i];
       n.bob += 0.12;
       n.life--;
       if (n.life <= 0) { nuggets.splice(i, 1); continue; }
       if (
-        player.x < n.x + 8 && player.x + player.w > n.x &&
-        player.y < n.y + 8 && player.y + player.h > n.y
+        player.x < n.x + 8 && player.x + w > n.x &&
+        player.y < n.y + 8 && player.y + h > n.y
       ) {
         nuggets.splice(i, 1);
-        const pts = 50;
-        score += pts;
-        nugCount++;
-        msg = '+' + pts + ' NUGGET!';
-        msgTimer = 70;
+        if (nugHeld < NUGS_TO_OPEN) nugHeld++;
+        score += 50;
+        msg = nugHeld >= NUGS_TO_OPEN
+          ? 'GOOD MCINTYRE NUGS! DOOR READY!'
+          : 'GOOD MCINTYRE NUGS! (' + nugHeld + '/5)';
+        msgTimer = 80;
         syncHud();
         beep(660, 0.05); beep(880, 0.07);
       }
@@ -741,13 +801,9 @@
       spills[i].life--;
       if (spills[i].life <= 0) spills.splice(i, 1);
     }
-
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy += 0.08;
-      p.life--;
+      p.x += p.vx; p.y += p.vy; p.vy += 0.08; p.life--;
       if (p.life <= 0) particles.splice(i, 1);
     }
   }
