@@ -425,6 +425,8 @@
   var audioUnlocked = false;
   var sfxEls = {};
   var currentSfx = null;
+  // Belchertown voice owns the mic — other SFX cannot cut it while this is true.
+  var voicePriority = false;
 
   // Five handmade wet slurps — pick one at random on each nug.
   var SLURP_URLS = [
@@ -436,7 +438,8 @@
   ];
   var ALL_SFX_URLS = SLURP_URLS.concat([
     'sfx/door-open.wav',
-    'sfx/dont-like-salad.wav'
+    'sfx/dont-like-salad.wav',
+    'sfx/belchertown.wav'
   ]);
 
   function ensureAudio() {
@@ -518,12 +521,22 @@
     currentSfx = null;
   }
 
-  function playHtmlSfx(url, vol) {
+  function clearVoicePriority() {
+    voicePriority = false;
+  }
+
+  // opts.priority: Belchertown voice — cuts everything, and nothing else may cut it.
+  function playHtmlSfx(url, vol, opts) {
     try {
+      opts = opts || {};
+      var priority = !!opts.priority;
       if (!audioUnlocked) unlockAudio();
-      // Newest SFX always wins — cut off whatever is already playing.
+      // While Belchertown owns the mic, lesser SFX are ignored.
+      if (voicePriority && !priority) return;
       stopCurrentSfx();
       try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e0) {}
+      if (priority) voicePriority = true;
+      else voicePriority = false;
       // Prefer a fresh element with the same src — most reliable on iOS after unlock.
       var a = new Audio();
       try { a.setAttribute('playsinline', ''); a.playsInline = true; } catch (e1) {}
@@ -532,6 +545,7 @@
       a.volume = vol == null ? 1 : vol;
       a.onended = function () {
         if (currentSfx === a) currentSfx = null;
+        if (priority) clearVoicePriority();
       };
       currentSfx = a;
       var p = a.play();
@@ -546,16 +560,22 @@
             try { b.currentTime = 0; } catch (e2) {}
             b.onended = function () {
               if (currentSfx === b) currentSfx = null;
+              if (priority) clearVoicePriority();
             };
             currentSfx = b;
             var p2 = b.play();
             if (p2 && typeof p2.catch === 'function') p2.catch(function () {
               if (currentSfx === b) currentSfx = null;
+              if (priority) clearVoicePriority();
             });
-          } catch (e3) {}
+          } catch (e3) {
+            if (priority) clearVoicePriority();
+          }
         });
       }
-    } catch (err) {}
+    } catch (err) {
+      if (opts && opts.priority) clearVoicePriority();
+    }
   }
 
   function playSlurp() {
@@ -587,9 +607,14 @@
     playHtmlSfx('sfx/dont-like-salad.wav', 1);
   }
 
+  function loadBelchertownLine() {
+    getSfxEl('sfx/belchertown.wav');
+  }
+
   function playBelchertownLine() {
-    // No reliable TTS on iOS; keep silent HUD-only for now.
-    ensureAudio();
+    try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e1) {}
+    // Always owns the mic — slurps/doors/salad cannot cut this line.
+    playHtmlSfx('sfx/belchertown.wav', 1, { priority: true });
   }
 
   function pointerPos(e) {
@@ -607,6 +632,7 @@
     loadSlurps();
     loadDoorOpen();
     loadSaladLine();
+    loadBelchertownLine();
     var p = pointerPos(e);
     // Drag anywhere on the canvas: finger need not be on the guy.
     // Offset keeps him from jumping under the pointer; he moves with the drag.
