@@ -117,13 +117,15 @@
     doorOpen: false,
     tooBig: false,
     belchertown: false,
+    scene: 'attic',
     salad: 0,
     nuggets: [],
     player: { x: W / 2, y: H / 2 },
     dragging: false,
     dragOff: { x: 0, y: 0 },
     doorLatch: false,
-    belchLatch: false
+    belchLatch: false,
+    edgeLatch: false
   };
 
   function say(text) {
@@ -174,7 +176,9 @@
     state.doorOpen = false;
     state.tooBig = false;
     state.belchertown = false;
+    state.scene = 'attic';
     state.salad = 0;
+    state.edgeLatch = false;
     spawnNuggets();
     hud();
     say('Drag your guy. Grab those McIntyre nugs.');
@@ -194,20 +198,56 @@
     if (state.tooBig || state.nugsSinceShrink >= 15) {
       state.tooBig = true;
       state.belchertown = true;
-      say('WELL. I GUESS IT WAS WORTH LOSING MY FRIENDS OVER. BETTER RUN TO BELCHERTOWN.');
+      playBelchertownLine();
+      say('TIME TO FUCK OFF TO BELCHERTOWN.');
       return;
     }
     enterNextRoom();
   }
 
-  function hitBelchertown() {
+  function enterBelchertownRoom() {
     if (!state.belchertown) return;
+    state.scene = 'belch';
+    state.belchertown = false;
+    state.edgeLatch = false;
+    state.player.x = W / 2;
+    state.player.y = H / 2;
+    say('BELCHERTOWN. YOU ARE INSIDE IT. HIT AN EDGE.');
+  }
+
+  function playSaladLine() {
+    ensureAudio();
+    if (!window.speechSynthesis) return;
+    try {
+      speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance("I don't even like salad.");
+      u.lang = 'en-US';
+      u.rate = 0.9;
+      u.pitch = 0.8;
+      u.volume = 1;
+      var voice = pickDeepVoice();
+      if (voice) u.voice = voice;
+      speechSynthesis.speak(u);
+    } catch (err) {}
+  }
+
+  function saladEdgeExit() {
+    if (state.scene !== 'belch') return;
+    playSaladLine();
     state.salad = 90;
     state.size = 1;
     state.nugsSinceShrink = 0;
     state.tooBig = false;
     state.belchertown = false;
-    say('SALAD EXPLOSION!!! COVERED. BACK TO NORMAL SIZE. DOOR FITS AGAIN.');
+    state.scene = 'attic';
+    state.edgeLatch = false;
+    state.player.x = W / 2;
+    state.player.y = H / 2;
+    say("I DON'T EVEN LIKE SALAD. DESTROYED. BACK TO NORMAL SIZE.");
+  }
+
+  function hitBelchertown() {
+    enterBelchertownRoom();
   }
 
   function eatNug(n) {
@@ -222,11 +262,113 @@
     var line = NUG_LINES[(Math.floor(state.score / 5) - 1) % NUG_LINES.length];
     if (state.roomNugs >= 5) {
       state.doorOpen = true;
+      playDoorOpen();
       say(line + ' — DOOR UNLOCKED. DRAG THROUGH IT.');
     } else {
       say(line);
     }
     hud();
+  }
+
+  var audioCtx = null;
+
+  if (window.speechSynthesis) {
+    speechSynthesis.getVoices();
+    speechSynthesis.addEventListener('voiceschanged', function () {
+      speechSynthesis.getVoices();
+    });
+  }
+
+  function ensureAudio() {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      if (!audioCtx) audioCtx = new AC();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      return audioCtx;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function pickDeepVoice() {
+    var voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+    if (!voices || !voices.length) return null;
+    var prefer = [
+      /microsoft david/i,
+      /google uk english male/i,
+      /daniel/i,
+      /alex/i,
+      /fred/i,
+      /bruce/i,
+      /david/i,
+      /male/i
+    ];
+    var i, j, v;
+    for (i = 0; i < prefer.length; i++) {
+      for (j = 0; j < voices.length; j++) {
+        v = voices[j];
+        if (prefer[i].test(v.name) && /^en/i.test(v.lang)) return v;
+      }
+    }
+    for (j = 0; j < voices.length; j++) {
+      if (/^en/i.test(voices[j].lang)) return voices[j];
+    }
+    return voices[0];
+  }
+
+  // Deep spoken line when the door unlocks / opens.
+  function playDoorOpen() {
+    ensureAudio();
+    if (!window.speechSynthesis) return;
+    try {
+      speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance('I open the door.');
+      u.lang = 'en-US';
+      u.rate = 0.7;
+      u.pitch = 0.25;
+      u.volume = 1;
+      var voice = pickDeepVoice();
+      if (voice) u.voice = voice;
+      speechSynthesis.speak(u);
+    } catch (err) {}
+  }
+
+  function pickSillyChineseVoice() {
+    var voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+    if (!voices || !voices.length) return null;
+    var i, v;
+    var preferName = [/tingting/i, /xiaoxiao/i, /xiaoyi/i, /yunjian/i, /yunxi/i, /kangkang/i, /huihui/i, /chinese/i, /zh-cn/i, /zh_cn/i];
+    for (i = 0; i < preferName.length; i++) {
+      for (var j = 0; j < voices.length; j++) {
+        v = voices[j];
+        if (preferName[i].test(v.name) || preferName[i].test(v.lang)) return v;
+      }
+    }
+    for (i = 0; i < voices.length; i++) {
+      if (/^zh/i.test(voices[i].lang)) return voices[i];
+    }
+    return null;
+  }
+
+  function playBelchertownLine() {
+    ensureAudio();
+    if (!window.speechSynthesis) return;
+    try {
+      speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance('Time to fuck off to Belchertown.');
+      u.volume = 1;
+      u.rate = 0.95;
+      u.pitch = 1.35;
+      var voice = pickSillyChineseVoice();
+      if (voice) {
+        u.voice = voice;
+        u.lang = voice.lang || 'zh-CN';
+      } else {
+        u.lang = 'zh-CN';
+      }
+      speechSynthesis.speak(u);
+    } catch (err) {}
   }
 
   function pointerPos(e) {
@@ -240,14 +382,14 @@
 
   function onDown(e) {
     e.preventDefault();
+    ensureAudio();
     var p = pointerPos(e);
-    var r = playerRadius();
-    if (dist(p.x, p.y, state.player.x, state.player.y) <= r + 18) {
-      state.dragging = true;
-      canvas.classList.add('dragging');
-      state.dragOff.x = state.player.x - p.x;
-      state.dragOff.y = state.player.y - p.y;
-    }
+    // Drag anywhere on the canvas: finger need not be on the guy.
+    // Offset keeps him from jumping under the pointer; he moves with the drag.
+    state.dragging = true;
+    canvas.classList.add('dragging');
+    state.dragOff.x = state.player.x - p.x;
+    state.dragOff.y = state.player.y - p.y;
   }
 
   function onMove(e) {
@@ -257,8 +399,14 @@
     var r = playerRadius();
     var x = p.x + state.dragOff.x;
     var y = p.y + state.dragOff.y;
-    x = Math.max(r + 8, Math.min(W - r - 8, x));
-    y = Math.max(r + 28, Math.min(H - r - 8, y));
+    if (state.scene === 'belch') {
+      // Allow touching the walls so edge-trigger can fire.
+      x = Math.max(r, Math.min(W - r, x));
+      y = Math.max(r, Math.min(H - r, y));
+    } else {
+      x = Math.max(r + 8, Math.min(W - r - 8, x));
+      y = Math.max(r + 28, Math.min(H - r - 8, y));
+    }
     state.player.x = x;
     state.player.y = y;
   }
@@ -329,7 +477,7 @@
   }
 
   function drawBelchertown() {
-    if (!state.belchertown) return;
+    if (state.scene === 'belch' || !state.belchertown) return;
     var x = 8, y = H / 2 - 50, w = 28, h = 100;
     ctx.fillStyle = '#203050';
     ctx.fillRect(x, y, w, h);
@@ -340,6 +488,40 @@
     ctx.font = '8px "Press Start 2P"';
     ctx.fillText('BELCHERTOWN', 0, 0);
     ctx.restore();
+  }
+
+  function drawBelchRoom() {
+    ctx.fillStyle = '#0c1828';
+    ctx.fillRect(0, 0, W, H);
+    ctx.font = '14px "Press Start 2P"';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    var rows = 8, cols = 3;
+    var i, j, x, y, wave;
+    for (j = 0; j < rows; j++) {
+      for (i = 0; i < cols; i++) {
+        x = (i + 0.5) * (W / cols);
+        y = 36 + j * ((H - 40) / rows);
+        wave = Math.sin((state.player.x + state.player.y) * 0.01 + i + j) * 0.15 + 0.55;
+        ctx.fillStyle = 'rgba(120, 180, 255,' + wave + ')';
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(((i + j) % 2 ? -1 : 1) * 0.12);
+        ctx.fillText('BELCHERTOWN', 0, 0);
+        ctx.restore();
+      }
+    }
+    // Soft vignette so he feels immersed
+    var g = ctx.createRadialGradient(state.player.x, state.player.y, 40, state.player.x, state.player.y, 280);
+    g.addColorStop(0, 'rgba(12, 24, 40, 0)');
+    g.addColorStop(1, 'rgba(4, 8, 16, 0.55)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#9ec8ff';
+    ctx.font = '8px "Press Start 2P"';
+    ctx.fillText('HIT THE EDGE', W / 2, 22);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
   }
 
   function drawNugget(n) {
@@ -359,12 +541,13 @@
     var s = state.size;
     var bodyH = 28 * s;
     var bodyW = 14 * s;
+    var headY = p.y - bodyH * 0.55;
     ctx.fillStyle = state.salad > 0 ? '#8fbf6a' : '#e8b4c8';
     ctx.beginPath();
     ctx.ellipse(p.x, p.y - bodyH * 0.15, bodyW * 0.55, bodyH * 0.55, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(p.x, p.y - bodyH * 0.55, bodyW * 0.65, bodyW * 0.7, 0, 0, Math.PI * 2);
+    ctx.ellipse(p.x, headY, bodyW * 0.65, bodyW * 0.7, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
     ctx.ellipse(p.x - bodyW * 0.45, p.y + bodyH * 0.25, bodyW * 0.5, bodyW * 0.4, 0, 0, Math.PI * 2);
@@ -372,9 +555,26 @@
     ctx.fill();
     ctx.fillStyle = '#1a0610';
     ctx.beginPath();
-    ctx.arc(p.x - 3 * s, p.y - bodyH * 0.6, Math.max(1.2, 1.5 * s), 0, Math.PI * 2);
-    ctx.arc(p.x + 3 * s, p.y - bodyH * 0.6, Math.max(1.2, 1.5 * s), 0, Math.PI * 2);
+    ctx.arc(p.x - 3 * s, headY - bodyW * 0.08, Math.max(1.2, 1.5 * s), 0, Math.PI * 2);
+    ctx.arc(p.x + 3 * s, headY - bodyW * 0.08, Math.max(1.2, 1.5 * s), 0, Math.PI * 2);
     ctx.fill();
+
+    // Mouth: smile grows with size; max frown when stuck too big at the door.
+    var mouthY = headY + bodyW * 0.22;
+    var grow = Math.min(1, Math.max(0, (state.nugsSinceShrink) / 15));
+    ctx.strokeStyle = '#1a0610';
+    ctx.lineWidth = Math.max(1.5, 1.4 * s);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    if (state.belchertown || state.scene === 'belch') {
+      var frownR = Math.max(4, 7 * s);
+      ctx.arc(p.x, mouthY + frownR * 0.55, frownR, Math.PI * 1.15, Math.PI * 1.85, false);
+    } else {
+      var smileR = Math.max(2, (2.2 + grow * 6.5) * s);
+      ctx.arc(p.x, mouthY - smileR * 0.15, smileR, Math.PI * 0.12, Math.PI * 0.88, false);
+    }
+    ctx.stroke();
+
     if (state.salad > 0) {
       ctx.fillStyle = '#c8f080';
       for (var i = 0; i < 8; i++) {
@@ -409,6 +609,26 @@
     if (state.salad > 0) state.salad--;
 
     var pr = playerRadius();
+
+    if (state.scene === 'belch') {
+      var pad = 2;
+      var onEdge = (
+        state.player.x <= pr + pad ||
+        state.player.x >= W - pr - pad ||
+        state.player.y <= pr + pad ||
+        state.player.y >= H - pr - pad
+      );
+      if (onEdge) {
+        if (!state.edgeLatch) {
+          state.edgeLatch = true;
+          saladEdgeExit();
+        }
+      } else {
+        state.edgeLatch = false;
+      }
+      return;
+    }
+
     for (var i = 0; i < state.nuggets.length; i++) {
       var n = state.nuggets[i];
       if (!n.eaten && dist(state.player.x, state.player.y, n.x, n.y) < pr + n.r) {
@@ -443,12 +663,18 @@
 
   function frame() {
     update();
-    drawAttic();
-    for (var i = 0; i < state.nuggets.length; i++) drawNugget(state.nuggets[i]);
-    drawDoor();
-    drawBelchertown();
-    drawPlayer();
-    drawSaladBurst();
+    if (state.scene === 'belch') {
+      drawBelchRoom();
+      drawPlayer();
+      drawSaladBurst();
+    } else {
+      drawAttic();
+      for (var i = 0; i < state.nuggets.length; i++) drawNugget(state.nuggets[i]);
+      drawDoor();
+      drawBelchertown();
+      drawPlayer();
+      drawSaladBurst();
+    }
     requestAnimationFrame(frame);
   }
 
