@@ -2,858 +2,155 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="mobile-web-app-capable" content="yes" />
-<title>PICKLE ATTIC — evilgame.com</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Tic Tac Toe — EVILGAME</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
-    height: 100%;
-    background: #0d0814;
-    color: #f0e6c8;
+    min-height: 100%;
+    background: #0a0610;
+    color: #c8f0c0;
     font-family: 'Press Start 2P', monospace;
-    overflow: hidden;
+  }
+  body {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    touch-action: none;
-    -webkit-user-select: none;
-    user-select: none;
-    -webkit-touch-callout: none;
+    gap: 18px;
+    padding: 24px 16px;
   }
   h1 {
-    font-size: 14px;
-    letter-spacing: 1px;
-    color: #7dff9a;
-    text-shadow: 2px 2px 0 #1a3d22;
+    font-size: clamp(12px, 3.5vw, 16px);
+    color: #7cff9a;
+    text-align: center;
+    line-height: 1.6;
   }
-  #gameShell {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+  .status {
+    font-size: 10px;
+    color: #a8d8a0;
+    min-height: 2.4em;
+    text-align: center;
+    line-height: 1.6;
+  }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
     gap: 8px;
-    width: 100%;
-    max-width: 100vw;
-    padding: 0 8px;
+    width: min(320px, 86vw);
+    aspect-ratio: 1;
   }
-  #wrap {
-    image-rendering: pixelated;
-    image-rendering: crisp-edges;
-    border: 4px solid #3a2a18;
-    box-shadow: 0 0 0 4px #1a1208, 8px 8px 0 #000;
-    background: #1a1208;
-    touch-action: none;
-  }
-  canvas {
-    display: block;
-    width: 640px;
-    height: 480px;
-    max-width: 95vw;
-    max-height: 70vh;
-    background: #2a1c10;
-    touch-action: none;
-    cursor: crosshair;
-  }
-  #hud {
-    display: flex;
-    gap: 16px;
-    font-size: 10px;
-    color: #f0e6c8;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-  #hud span b { color: #ffd24a; }
-  #hint {
-    font-size: 8px;
-    color: #9a8660;
-    text-align: center;
-    line-height: 1.8;
-    max-width: 640px;
-  }
-  a { color: #7dff9a; }
-  #pad {
-    display: none;
-    width: min(640px, 95vw);
-    margin-top: 4px;
-    gap: 12px;
-    align-items: center;
-    justify-content: center;
-    touch-action: none;
-  }
-  .pad-show #pad { display: flex; }
-  .pad-show #hint .desk { display: none; }
-  .pad-show #hint .mob { display: inline; }
-  #hint .mob { display: none; }
-  .btn {
-    border: 3px solid #7dff9a;
-    background: rgba(20, 40, 24, 0.85);
-    color: #7dff9a;
+  .cell {
+    background: #12101c;
+    border: 3px solid #3a3550;
+    color: #7cff9a;
     font-family: inherit;
-    font-size: 10px;
-    border-radius: 8px;
+    font-size: clamp(28px, 10vw, 42px);
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    touch-action: none;
+    user-select: none;
     -webkit-tap-highlight-color: transparent;
-    box-shadow: 0 0 0 2px #1a1208;
-    width: 96px;
-    height: 56px;
-    line-height: 1.3;
-    text-align: center;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.45);
   }
-  .btn:active, .btn.held {
-    background: rgba(125, 255, 154, 0.35);
-    color: #fff;
+  .cell:hover:not(:disabled) { border-color: #7cff9a; }
+  .cell:disabled { cursor: default; }
+  .cell.win { background: #1a3a24; border-color: #7cff9a; }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  button.btn {
+    font-family: inherit;
+    font-size: 9px;
+    padding: 12px 16px;
+    background: #1a1528;
+    color: #c8f0c0;
+    border: 3px solid #3a3550;
+    cursor: pointer;
   }
-  .btn.reset {
-    border-color: #b09040;
-    color: #f0d080;
+  button.btn:hover { border-color: #7cff9a; color: #7cff9a; }
+  a.back {
+    font-size: 8px;
+    color: #6a8870;
+    text-decoration: none;
   }
-  .btn.reset:active, .btn.reset.held {
-    background: rgba(176, 144, 64, 0.35);
-  }
-  @media (max-width: 720px), (pointer: coarse) {
-    body { justify-content: flex-start; padding-top: 8px; gap: 6px; overflow: auto; }
-    h1 { font-size: 11px; }
-    #hud { font-size: 8px; gap: 10px; }
-    canvas {
-      width: min(95vw, 100%);
-      height: auto;
-      max-height: 52vh;
-      aspect-ratio: 4 / 3;
-    }
-    #pad { display: flex; }
-    #hint { font-size: 7px; padding-bottom: 12px; }
-    #hint .desk { display: none; }
-    #hint .mob { display: inline; }
-  }
+  a.back:hover { color: #7cff9a; }
 </style>
 </head>
 <body>
-  <div id="gameShell">
-  <h1>PICKLE ATTIC</h1>
-  <div id="hud">
-    <span>SCORE <b id="score">0</b></span>
-    <span>NUGS <b id="nugs">0</b>/5</span>
-    <span>DOORS <b id="doors">0</b>/<span id="doorsMax">0</span></span>
+  <h1>TIC TAC TOE</h1>
+  <p class="status" id="status">X goes first</p>
+  <div class="board" id="board" aria-label="Tic tac toe board"></div>
+  <div class="actions">
+    <button type="button" class="btn" id="reset">NEW GAME</button>
   </div>
-  <div id="wrap"><canvas id="c" width="320" height="240"></canvas></div>
-  <div id="pad" aria-label="touch actions">
-    <button type="button" class="btn" id="btnOpen" aria-label="open door">OPEN</button>
-    <button type="button" class="btn reset" id="btnReset" aria-label="reset">RESET</button>
-  </div>
-  <p id="hint">
-    <span class="desk">ARROWS / WASD move · walk into door with 5 nugs · R reset<br/></span>
-    <span class="mob">DRAG the pickle · 5 nugs auto-opens door · RESET<br/></span>
-  Eat 5 McIntyre nugs to grow big enough for a door. Salad shrinks you!<br/>
-  <a href="index.html">back</a></p>
-  </div>
+  <a class="back" href="index.html">← PROGRAM MENU</a>
 <script>
-(() => {
-  const canvas = document.getElementById('c');
-  const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
-
-  const TILE = 16;
-  const COLS = 20;
-  const ROWS = 15;
-  const NUGS_TO_OPEN = 5;
-
-  const map = [
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,2,2,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,1],
-    [1,0,2,2,0,0,6,6,0,0,0,0,0,6,6,2,2,0,0,1],
-    [1,0,0,0,0,0,6,6,0,0,0,0,0,6,6,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,1],
-    [1,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,1],
-    [1,0,0,0,0,0,0,3,3,0,0,3,3,0,0,0,0,0,0,1],
-    [1,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,1],
-    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+(function () {
+  const wins = [
+    [0,1,2],[3,4,5],[6,7,8],
+    [0,3,6],[1,4,7],[2,5,8],
+    [0,4,8],[2,4,6]
   ];
+  let cells = Array(9).fill(null);
+  let turn = 'X';
+  let over = false;
+  const board = document.getElementById('board');
+  const status = document.getElementById('status');
+  const buttons = [];
 
-  const doorDefs = [
-    { x: 8, y: 1 },
-    { x: 1, y: 5 },
-    { x: 15, y: 5 },
-    { x: 8, y: 10 },
-  ];
-
-  const SALADS = [
-    { name: 'CAESAR SALAD', color: '#d8e8a0', bits: '#f5f0d0' },
-    { name: 'GARDEN SALAD', color: '#4caf50', bits: '#ff6b4a' },
-    { name: 'POTATO SALAD', color: '#e8d8a0', bits: '#fff8e0' },
-    { name: 'MYSTERY SALAD', color: '#7ec87e', bits: '#c0ff90' },
-  ];
-
-  let doors = [];
-  let nuggets = [];
-  let spills = [];
-  let particles = [];
-  let score = 0;
-  let openedCount = 0;
-  let nugHeld = 0; // 0..5 bank toward opening
-  let flash = 0;
-  let msg = 'eat 5 nugs to open a door!';
-  let msgTimer = 160;
-  let spawnTimer = 40;
-  const keys = Object.create(null);
-  const drag = { active: false, x: 0, y: 0 };
-
-  const player = {
-    x: 10 * TILE + 4,
-    y: 8 * TILE + 4,
-    baseW: 10,
-    baseH: 12,
-    speed: 1.15,
-    facing: 1,
-    bob: 0,
-  };
-
-  function nugScale() {
-    // grow with each nug until 5 (door-ready)
-    return 1 + nugHeld * 0.22;
-  }
-  function playerSize() {
-    const s = nugScale();
-    return { w: Math.round(player.baseW * s), h: Math.round(player.baseH * s) };
-  }
-
-  const dust = Array.from({ length: 28 }, () => ({
-    x: Math.random() * 320,
-    y: Math.random() * 240,
-    s: 0.2 + Math.random() * 0.5,
-    a: Math.random(),
-  }));
-
-  let audioCtx = null;
-  function beep(freq, dur, type = 'square', vol = 0.04) {
-    try {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const o = audioCtx.createOscillator();
-      const g = audioCtx.createGain();
-      o.type = type;
-      o.frequency.value = freq;
-      g.gain.value = vol;
-      o.connect(g); g.connect(audioCtx.destination);
-      o.start();
-      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
-      o.stop(audioCtx.currentTime + dur);
-    } catch (_) {}
-  }
-  function unlockAudio() {
-    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-  }
-
-  function initDoors() {
-    doors = doorDefs.map((d, id) => ({
-      x: d.x, y: d.y, w: 4, h: 4, open: false, id
-    }));
-    document.getElementById('doorsMax').textContent = String(doors.length);
-  }
-
-  function doorBlocks(tx, ty) {
-    for (const d of doors) {
-      if (d.open) continue;
-      if (tx >= d.x && tx < d.x + d.w && ty >= d.y && ty < d.y + d.h) return true;
-    }
-    return false;
-  }
-
-  function solid(tx, ty) {
-    if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) return true;
-    const t = map[ty][tx];
-    if (t === 1 || t === 2) return true;
-    return doorBlocks(tx, ty);
-  }
-
-  function rectHitsSolid(x, y, w, h) {
-    const x0 = Math.floor(x / TILE);
-    const y0 = Math.floor(y / TILE);
-    const x1 = Math.floor((x + w - 0.01) / TILE);
-    const y1 = Math.floor((y + h - 0.01) / TILE);
-    for (let ty = y0; ty <= y1; ty++) {
-      for (let tx = x0; tx <= x1; tx++) {
-        if (solid(tx, ty)) return true;
+  function winner() {
+    for (const [a,b,c] of wins) {
+      if (cells[a] && cells[a] === cells[b] && cells[a] === cells[c]) {
+        return { mark: cells[a], line: [a,b,c] };
       }
-    }
-    return false;
-  }
-
-  function tryMove(dx, dy) {
-    const { w, h } = playerSize();
-    let nx = player.x + dx;
-    let ny = player.y + dy;
-    if (!rectHitsSolid(nx, player.y, w, h)) player.x = nx;
-    if (!rectHitsSolid(player.x, ny, w, h)) player.y = ny;
-    // keep on screen
-    player.x = Math.max(TILE, Math.min(player.x, COLS * TILE - w - TILE));
-    player.y = Math.max(TILE, Math.min(player.y, ROWS * TILE - h - TILE));
-  }
-
-  function isWalkableTile(tx, ty) {
-    if (tx < 1 || ty < 1 || tx >= COLS - 1 || ty >= ROWS - 1) return false;
-    const t = map[ty][tx];
-    if (t === 1 || t === 2) return false;
-    if (doorBlocks(tx, ty)) return false;
-    return true;
-  }
-
-  function spawnNugget() {
-    if (nuggets.length >= 8) return;
-    for (let tries = 0; tries < 40; tries++) {
-      const tx = 1 + (Math.random() * (COLS - 2) | 0);
-      const ty = 1 + (Math.random() * (ROWS - 2) | 0);
-      if (!isWalkableTile(tx, ty)) continue;
-      const px = tx * TILE + 4;
-      const py = ty * TILE + 4;
-      const tooClose = nuggets.some(n => Math.hypot(n.x - px, n.y - py) < 20);
-      const { w, h } = playerSize();
-      const onPlayer = Math.hypot(px - player.x, py - player.y) < 28;
-      if (tooClose || onPlayer) continue;
-      nuggets.push({ x: px, y: py, bob: Math.random() * Math.PI * 2, life: 900 });
-      return;
-    }
-  }
-
-  function nearDoor() {
-    const { w, h } = playerSize();
-    const cx = player.x + w / 2;
-    const cy = player.y + h / 2;
-    let best = null;
-    let bestD = 40;
-    for (const d of doors) {
-      if (d.open) continue;
-      const dx = (d.x + d.w / 2) * TILE - cx;
-      const dy = (d.y + d.h / 2) * TILE - cy;
-      const dist = Math.hypot(dx, dy);
-      if (dist < bestD) { bestD = dist; best = d; }
-    }
-    return best;
-  }
-
-  function shutAllDoors() {
-    for (const d of doors) {
-      d.open = false;
-    }
-    openedCount = 0;
-    syncHud();
-  }
-
-  function shrinkFromSalad() {
-    nugHeld = 0;
-    syncHud();
-    shutAllDoors();
-    spills = [];
-    // shrink visual is automatic via nugHeld
-  }
-
-  function spillSalad(door) {
-    const salad = SALADS[Math.floor(Math.random() * 4)];
-    const cx = (door.x + door.w / 2) * TILE;
-    const cy = (door.y + door.h / 2) * TILE;
-    spills.push({
-      x: cx - 14,
-      y: cy - 6,
-      w: 28,
-      h: 22,
-      salad,
-      life: 360,
-    });
-    for (let i = 0; i < 18; i++) {
-      particles.push({
-        x: cx + (Math.random() - 0.5) * 20,
-        y: cy + (Math.random() - 0.5) * 12,
-        vx: (Math.random() - 0.5) * 2.2,
-        vy: (Math.random() - 0.5) * 2.2,
-        life: 40 + (Math.random() * 30 | 0),
-        color: Math.random() > 0.5 ? salad.color : salad.bits,
-      });
-    }
-    shrinkFromSalad();
-    msg = "I DON'T EVEN LIKE SALAD";
-    msgTimer = 140;
-    beep(180, 0.1, 'sawtooth', 0.05);
-    beep(140, 0.14, 'sawtooth', 0.04);
-    setTimeout(() => {
-      if (msgTimer > 0) {
-        msg = 'SHRINK! ALL DOORS SHUT — EAT NUGS!';
-        msgTimer = 140;
-      }
-    }, 900);
-  }
-
-  function tryOpenDoor() {
-    const d = nearDoor();
-    if (!d) {
-      msg = 'GET CLOSER TO A DOOR';
-      msgTimer = 70;
-      beep(160, 0.06);
-      return;
-    }
-    if (nugHeld < NUGS_TO_OPEN) {
-      const need = NUGS_TO_OPEN - nugHeld;
-      msg = 'NEED MORE NUGS! (' + need + ' MORE)';
-      msgTimer = 100;
-      beep(120, 0.1);
-      beep(100, 0.08);
-      return;
-    }
-    openDoor(d);
-  }
-
-  function openDoor(d) {
-    if (!d || d.open) return;
-    // spend the 5 nugs — shrink a bit until you eat again (unless salad resets fully)
-    nugHeld = 0;
-    d.open = true;
-    openedCount = doors.filter(x => x.open).length;
-    const pts = 100 + openedCount * 25;
-    score += pts;
-    flash = 12;
-    msg = '+' + pts + ' DOOR OPEN!';
-    msgTimer = 90;
-    syncHud();
-    beep(220, 0.06); beep(330, 0.08); beep(440, 0.1);
-
-    // 1-in-4 salad spill → shrink + shut all doors
-    if ((Math.random() * 4 | 0) === 0) {
-      spillSalad(d);
-      return;
-    }
-
-    if (openedCount >= doors.length) {
-      msg = 'ALL DOORS! ATTIC CLEARED +500';
-      score += 500;
-      syncHud();
-      msgTimer = 200;
-      beep(523, 0.12); beep(659, 0.12); beep(784, 0.18);
-    }
-  }
-
-  function syncHud() {
-    document.getElementById('score').textContent = String(score);
-    document.getElementById('doors').textContent = String(openedCount);
-    document.getElementById('nugs').textContent = String(nugHeld);
-  }
-
-  function resetGame() {
-    initDoors();
-    nuggets = [];
-    spills = [];
-    particles = [];
-    player.x = 10 * TILE + 4;
-    player.y = 8 * TILE + 4;
-    score = 0;
-    openedCount = 0;
-    nugHeld = 0;
-    flash = 0;
-    spawnTimer = 20;
-    msg = 'attic reset. eat those McIntyre nugs!';
-    msgTimer = 120;
-    syncHud();
-    for (let i = 0; i < 3; i++) spawnNugget();
-    beep(160, 0.08);
-  }
-
-  window.addEventListener('keydown', (e) => {
-    keys[e.code] = true;
-    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
-    if (e.code === 'Space' || e.code === 'KeyE') tryOpenDoor();
-    if (e.code === 'KeyR') resetGame();
-    unlockAudio();
-  });
-  window.addEventListener('keyup', (e) => { keys[e.code] = false; });
-
-  // Canvas drag-to-move (phone)
-  function canvasPos(ev) {
-    const rect = canvas.getBoundingClientRect();
-    const t = (ev.touches && ev.touches[0]) || (ev.changedTouches && ev.changedTouches[0]) || ev;
-    return {
-      x: ((t.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((t.clientY - rect.top) / rect.height) * canvas.height,
-    };
-  }
-  function onDragStart(ev) {
-    ev.preventDefault();
-    unlockAudio();
-    drag.active = true;
-    const p = canvasPos(ev);
-    drag.x = p.x;
-    drag.y = p.y;
-  }
-  function onDragMove(ev) {
-    if (!drag.active) return;
-    ev.preventDefault();
-    const p = canvasPos(ev);
-    drag.x = p.x;
-    drag.y = p.y;
-  }
-  function onDragEnd(ev) {
-    if (ev) ev.preventDefault();
-    drag.active = false;
-  }
-  canvas.addEventListener('touchstart', onDragStart, { passive: false });
-  canvas.addEventListener('touchmove', onDragMove, { passive: false });
-  canvas.addEventListener('touchend', onDragEnd, { passive: false });
-  canvas.addEventListener('touchcancel', onDragEnd, { passive: false });
-  canvas.addEventListener('mousedown', onDragStart);
-  window.addEventListener('mousemove', (e) => { if (drag.active) onDragMove(e); });
-  window.addEventListener('mouseup', onDragEnd);
-
-  function bindHold(el, onStart, onEnd) {
-    const start = (ev) => {
-      ev.preventDefault();
-      unlockAudio();
-      el.classList.add('held');
-      onStart();
-    };
-    const end = (ev) => {
-      if (ev) ev.preventDefault();
-      el.classList.remove('held');
-      onEnd();
-    };
-    el.addEventListener('touchstart', start, { passive: false });
-    el.addEventListener('touchend', end, { passive: false });
-    el.addEventListener('touchcancel', end, { passive: false });
-    el.addEventListener('mousedown', start);
-    el.addEventListener('mouseup', end);
-    el.addEventListener('mouseleave', end);
-  }
-  bindHold(document.getElementById('btnOpen'), () => tryOpenDoor(), () => {});
-  bindHold(document.getElementById('btnReset'), () => resetGame(), () => {});
-
-  document.addEventListener('touchmove', (e) => {
-    if (e.target.closest('#pad, #wrap, canvas')) e.preventDefault();
-  }, { passive: false });
-
-  if (window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window) {
-    document.body.classList.add('pad-show');
-  }
-
-  function drawTile(tx, ty, t) {
-    const x = tx * TILE, y = ty * TILE;
-    if (t === 0 || t === 3 || t === 6) {
-      ctx.fillStyle = (tx + ty) % 2 ? '#3b2918' : '#342314';
-      ctx.fillRect(x, y, TILE, TILE);
-      ctx.fillStyle = '#2a1a0e';
-      ctx.fillRect(x, y + TILE - 1, TILE, 1);
-    }
-    if (t === 6) {
-      ctx.fillStyle = '#5a2030';
-      ctx.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
-      ctx.fillStyle = '#7a3040';
-      ctx.fillRect(x + 3, y + 3, TILE - 6, TILE - 6);
-    }
-    if (t === 1) {
-      ctx.fillStyle = '#1a120c';
-      ctx.fillRect(x, y, TILE, TILE);
-      ctx.fillStyle = '#4a3420';
-      ctx.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
-      ctx.fillStyle = '#2e2014';
-      ctx.fillRect(x + 3, y + 4, 2, 2);
-      ctx.fillRect(x + 10, y + 9, 2, 2);
-    }
-    if (t === 2) {
-      ctx.fillStyle = '#6b4420';
-      ctx.fillRect(x + 1, y + 2, TILE - 2, TILE - 3);
-      ctx.fillStyle = '#8a5a28';
-      ctx.fillRect(x + 2, y + 3, TILE - 4, 3);
-      ctx.fillStyle = '#3a2410';
-      ctx.fillRect(x + 2, y + 8, TILE - 4, 1);
-      ctx.fillRect(x + 7, y + 3, 1, TILE - 4);
-    }
-    if (t === 3) {
-      ctx.fillStyle = '#1a2840';
-      ctx.fillRect(x, y, TILE, TILE);
-      ctx.fillStyle = '#6ec8ff';
-      ctx.globalAlpha = 0.35;
-      ctx.fillRect(x + 2, y + 2, TILE - 4, TILE - 4);
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = '#cdefff';
-      ctx.fillRect(x + 3, y + 3, 2, 2);
-      ctx.fillStyle = '#5a4030';
-      ctx.fillRect(x, y, TILE, 2);
-      ctx.fillRect(x, y + TILE - 2, TILE, 2);
-      ctx.fillRect(x + 7, y, 2, TILE);
-    }
-  }
-
-  function drawDoor(d) {
-    const x = d.x * TILE;
-    const y = d.y * TILE;
-    const w = d.w * TILE;
-    const h = d.h * TILE;
-    for (let ty = d.y; ty < d.y + d.h; ty++) {
-      for (let tx = d.x; tx < d.x + d.w; tx++) {
-        ctx.fillStyle = (tx + ty) % 2 ? '#3b2918' : '#342314';
-        ctx.fillRect(tx * TILE, ty * TILE, TILE, TILE);
-      }
-    }
-    if (!d.open) {
-      ctx.fillStyle = '#3a1c0c';
-      ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
-      ctx.fillStyle = '#6b3a18';
-      ctx.fillRect(x + 3, y + 3, w - 6, h - 6);
-      ctx.fillStyle = '#8a5028';
-      ctx.fillRect(x + 5, y + 5, w - 10, h - 10);
-      ctx.fillStyle = '#4a2810';
-      ctx.fillRect(x + 6, y + 6, (w / 2) - 8, h - 14);
-      ctx.fillRect(x + w / 2 + 2, y + 6, (w / 2) - 8, h - 14);
-      ctx.fillStyle = '#d4a84a';
-      ctx.fillRect(x + w - 10, y + h / 2 - 2, 4, 4);
-      ctx.fillStyle = '#2a1808';
-      ctx.fillRect(x + 1, y + 1, w - 2, 2);
-      ctx.fillRect(x + 1, y + h - 3, w - 2, 2);
-    } else {
-      ctx.fillStyle = '#0a0604';
-      ctx.fillRect(x + 4, y + 2, w - 8, h - 4);
-      ctx.fillStyle = '#5a3018';
-      ctx.fillRect(x + 2, y + 2, 4, h - 4);
-      ctx.fillRect(x + w - 6, y + 2, 4, h - 4);
-    }
-  }
-
-  function drawNugget(n) {
-    const bob = Math.sin(n.bob) * 1.5;
-    const x = Math.round(n.x);
-    const y = Math.round(n.y + bob);
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.fillRect(x + 1, y + 8, 7, 2);
-    ctx.fillStyle = '#c47828';
-    ctx.fillRect(x + 1, y + 2, 7, 6);
-    ctx.fillStyle = '#e8a040';
-    ctx.fillRect(x + 2, y + 3, 5, 4);
-    ctx.fillStyle = '#ffe080';
-    ctx.fillRect(x + 3, y + 4, 2, 1);
-    ctx.fillStyle = '#8a4010';
-    ctx.fillRect(x + 2, y + 7, 5, 1);
-  }
-
-  function drawSpill(s) {
-    const a = Math.min(1, s.life / 60);
-    ctx.globalAlpha = 0.35 + 0.45 * a;
-    ctx.fillStyle = s.salad.color;
-    ctx.fillRect(s.x | 0, s.y | 0, s.w, s.h);
-    ctx.fillStyle = s.salad.bits;
-    ctx.fillRect((s.x + 4) | 0, (s.y + 3) | 0, 3, 3);
-    ctx.fillRect((s.x + 14) | 0, (s.y + 8) | 0, 4, 2);
-    ctx.fillRect((s.x + 8) | 0, (s.y + 14) | 0, 3, 3);
-    ctx.globalAlpha = 1;
-  }
-
-  function drawPickle(px, py) {
-    const s = nugScale();
-    const bob = Math.sin(player.bob) * 1;
-    const { w, h } = playerSize();
-    const x = Math.round(px);
-    const y = Math.round(py + bob);
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(x + 1, y + h - 1, w - 2, 2);
-    ctx.fillStyle = '#3d8f3a';
-    ctx.fillRect(x + 1, y + 2, w - 2, h - 3);
-    ctx.fillStyle = '#56b84a';
-    ctx.fillRect(x + 2, y + 3, w - 4, h - 5);
-    ctx.fillStyle = '#2f6e2c';
-    ctx.fillRect(x + 2, y + 4, Math.max(2, (w / 4) | 0), 2);
-    ctx.fillRect(x + w - 4, y + 6, Math.max(2, (w / 4) | 0), 2);
-    ctx.fillStyle = '#6b3a12';
-    ctx.fillRect(x + (w / 2 | 0) - 1, y, 2, 2);
-    ctx.fillStyle = '#4a8f2a';
-    ctx.fillRect(x + (w / 2 | 0) + 1, y, 2, 1);
-    const eyeX = player.facing > 0 ? x + w - 4 : x + 2;
-    ctx.fillStyle = '#102010';
-    ctx.fillRect(eyeX, y + (h / 3 | 0) + 1, 2, 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(eyeX, y + (h / 3 | 0) + 1, 1, 1);
-    ctx.fillStyle = '#1a4018';
-    ctx.fillRect(x + (w / 2 | 0) - 1, y + h - 5, 3, 1);
-    if (nugHeld >= NUGS_TO_OPEN) {
-      ctx.fillStyle = '#ffd24a';
-      ctx.fillRect(x, y - 3, w, 1);
-    }
-  }
-
-  function drawMoonlight() {
-    ctx.fillStyle = 'rgba(140, 190, 255, 0.06)';
-    ctx.fillRect(7 * TILE, 0, 2 * TILE, 12 * TILE);
-    ctx.fillRect(11 * TILE, 0, 2 * TILE, 12 * TILE);
-  }
-
-  function drawUI() {
-    if (msgTimer > 0) {
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect(8, 210, 304, 22);
-      ctx.fillStyle = '#ffd24a';
-      ctx.font = '8px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(msg, 160, 224);
-      ctx.textAlign = 'left';
-    }
-    const d = nearDoor();
-    if (d) {
-      ctx.fillStyle = nugHeld >= NUGS_TO_OPEN ? '#7dff9a' : '#b09040';
-      ctx.font = '8px monospace';
-      ctx.fillText(
-        nugHeld >= NUGS_TO_OPEN ? 'AUTO OPEN' : 'NEED ' + (NUGS_TO_OPEN - nugHeld) + ' NUGS',
-        Math.round(d.x * TILE + 2),
-        Math.round(d.y * TILE - 2)
-      );
-    }
-    if (flash > 0) {
-      ctx.fillStyle = `rgba(255,220,100,${flash / 20})`;
-      ctx.fillRect(0, 0, 320, 240);
-    }
-  }
-
-  function onSpill(px, py) {
-    const { w, h } = playerSize();
-    for (const s of spills) {
-      if (px + w > s.x && px < s.x + s.w && py + h > s.y && py < s.y + s.h) return s;
     }
     return null;
   }
 
-  function update() {
-    let dx = 0, dy = 0;
-    if (keys.ArrowLeft || keys.KeyA) { dx -= player.speed; player.facing = -1; }
-    if (keys.ArrowRight || keys.KeyD) { dx += player.speed; player.facing = 1; }
-    if (keys.ArrowUp || keys.KeyW) dy -= player.speed;
-    if (keys.ArrowDown || keys.KeyS) dy += player.speed;
-
-    // Drag toward finger / cursor
-    if (drag.active) {
-      const { w, h } = playerSize();
-      const cx = player.x + w / 2;
-      const cy = player.y + h / 2;
-      const tx = drag.x - cx;
-      const ty = drag.y - cy;
-      const dist = Math.hypot(tx, ty);
-      if (dist > 2) {
-        const spd = Math.min(player.speed * 1.35, dist * 0.2);
-        dx += (tx / dist) * spd;
-        dy += (ty / dist) * spd;
-        if (tx !== 0) player.facing = tx > 0 ? 1 : -1;
-      }
-    }
-
-    if (dx && dy) { dx *= 0.707; dy *= 0.707; }
-
-    const slip = onSpill(player.x, player.y);
-    if (slip) {
-      dx *= 1.35;
-      dy *= 1.35;
-      dx += Math.sin(player.bob * 2) * 0.4;
-    }
-
-    if (dx || dy) {
-      tryMove(dx, dy);
-      player.bob += 0.35;
-    }
-
-    // Auto-open when holding 5 nugs and next to a closed door
-    if (nugHeld >= NUGS_TO_OPEN) {
-      const d = nearDoor();
-      if (d) openDoor(d);
-    }
-
-    if (msgTimer > 0) msgTimer--;
-    if (flash > 0) flash--;
-
-    for (const p of dust) {
-      p.y += p.s * 0.15;
-      p.a += 0.02;
-      if (p.y > 240) { p.y = 0; p.x = Math.random() * 320; }
-    }
-
-    spawnTimer--;
-    if (spawnTimer <= 0) {
-      spawnNugget();
-      spawnTimer = 45 + (Math.random() * 35 | 0);
-    }
-
-    const { w, h } = playerSize();
-    for (let i = nuggets.length - 1; i >= 0; i--) {
-      const n = nuggets[i];
-      n.bob += 0.12;
-      n.life--;
-      if (n.life <= 0) { nuggets.splice(i, 1); continue; }
-      if (
-        player.x < n.x + 8 && player.x + w > n.x &&
-        player.y < n.y + 8 && player.y + h > n.y
-      ) {
-        nuggets.splice(i, 1);
-        if (nugHeld < NUGS_TO_OPEN) nugHeld++;
-        score += 50;
-        msg = nugHeld >= NUGS_TO_OPEN
-          ? 'GOOD MCINTYRE NUGS! DOOR READY!'
-          : 'GOOD MCINTYRE NUGS! (' + nugHeld + '/5)';
-        msgTimer = 80;
-        syncHud();
-        beep(660, 0.05); beep(880, 0.07);
-      }
-    }
-
-    for (let i = spills.length - 1; i >= 0; i--) {
-      spills[i].life--;
-      if (spills[i].life <= 0) spills.splice(i, 1);
-    }
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const p = particles[i];
-      p.x += p.vx; p.y += p.vy; p.vy += 0.08; p.life--;
-      if (p.life <= 0) particles.splice(i, 1);
+  function render() {
+    const w = winner();
+    buttons.forEach((btn, i) => {
+      btn.textContent = cells[i] || '';
+      btn.disabled = over || cells[i] !== null;
+      btn.classList.toggle('win', !!(w && w.line.includes(i)));
+    });
+    if (w) {
+      over = true;
+      status.textContent = w.mark + ' wins!';
+    } else if (cells.every(Boolean)) {
+      over = true;
+      status.textContent = "It's a draw.";
+    } else {
+      status.textContent = turn + ' goes next';
     }
   }
 
-  function draw() {
-    ctx.fillStyle = '#1a1208';
-    ctx.fillRect(0, 0, 320, 240);
-    for (let y = 0; y < ROWS; y++) {
-      for (let x = 0; x < COLS; x++) drawTile(x, y, map[y][x]);
-    }
-    for (const d of doors) drawDoor(d);
-    for (const s of spills) drawSpill(s);
-    drawMoonlight();
-    for (const p of dust) {
-      ctx.fillStyle = `rgba(220,200,160,${0.15 + 0.15 * Math.sin(p.a)})`;
-      ctx.fillRect(p.x | 0, p.y | 0, 1, 1);
-    }
-    for (const n of nuggets) drawNugget(n);
-    for (const p of particles) {
-      ctx.fillStyle = p.color;
-      ctx.fillRect(p.x | 0, p.y | 0, 2, 2);
-    }
-    ctx.fillStyle = '#2a1a10';
-    ctx.fillRect(72, 20, 176, 14);
-    ctx.fillStyle = '#8a6a40';
-    ctx.font = '8px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('YE OLDE ATTIC', 160, 30);
-    ctx.textAlign = 'left';
-    drawPickle(player.x, player.y);
-    drawUI();
+  function play(i) {
+    if (over || cells[i]) return;
+    cells[i] = turn;
+    turn = turn === 'X' ? 'O' : 'X';
+    render();
   }
 
-  function loop() {
-    update();
-    draw();
-    requestAnimationFrame(loop);
+  function reset() {
+    cells = Array(9).fill(null);
+    turn = 'X';
+    over = false;
+    render();
   }
 
-  initDoors();
-  for (let i = 0; i < 3; i++) spawnNugget();
-  syncHud();
-  loop();
+  for (let i = 0; i < 9; i++) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cell';
+    btn.setAttribute('aria-label', 'Cell ' + (i + 1));
+    btn.addEventListener('click', () => play(i));
+    board.appendChild(btn);
+    buttons.push(btn);
+  }
+  document.getElementById('reset').addEventListener('click', reset);
+  render();
 })();
 </script>
 </body>
