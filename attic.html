@@ -148,8 +148,8 @@
     <button type="button" class="btn reset" id="btnReset" aria-label="reset">RESET</button>
   </div>
   <p id="hint">
-    <span class="desk">ARROWS / WASD move · SPACE / E open · R reset<br/></span>
-    <span class="mob">DRAG the pickle · OPEN door · RESET<br/></span>
+    <span class="desk">ARROWS / WASD move · walk into door with 5 nugs · R reset<br/></span>
+    <span class="mob">DRAG the pickle · 5 nugs auto-opens door · RESET<br/></span>
   Eat 5 McIntyre nugs to grow big enough for a door. Salad shrinks you!<br/>
   <a href="index.html">back</a></p>
   </div>
@@ -705,7 +705,7 @@
       ctx.fillStyle = nugHeld >= NUGS_TO_OPEN ? '#7dff9a' : '#b09040';
       ctx.font = '8px monospace';
       ctx.fillText(
-        nugHeld >= NUGS_TO_OPEN ? 'OPEN READY' : 'NEED ' + (NUGS_TO_OPEN - nugHeld) + ' NUGS',
+        nugHeld >= NUGS_TO_OPEN ? 'AUTO OPEN' : 'NEED ' + (NUGS_TO_OPEN - nugHeld) + ' NUGS',
         Math.round(d.x * TILE + 2),
         Math.round(d.y * TILE - 2)
       );
@@ -760,6 +760,13 @@
       tryMove(dx, dy);
       player.bob += 0.35;
     }
+
+    // Auto-open when holding 5 nugs and next to a closed door
+    if (nugHeld >= NUGS_TO_OPEN) {
+      const d = nearDoor();
+      if (d) openDoor(d);
+    }
+
     if (msgTimer > 0) msgTimer--;
     if (flash > 0) flash--;
 
