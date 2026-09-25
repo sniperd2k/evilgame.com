@@ -14,6 +14,12 @@ CANDIDATES = [
     os.environ.get("AFG_WEBHOOK_URL", ""),
 ]
 
+KEY_CANDIDATES = [
+    os.path.join(HERE, "App_Data", "afg_webhook_key.txt"),
+    os.path.join(HERE, "afg_webhook_key.txt"),
+    os.environ.get("AFG_WEBHOOK_KEY", ""),
+]
+
 
 def read_webhook():
     for path in CANDIDATES:
@@ -26,6 +32,21 @@ def read_webhook():
                 url = f.read().strip()
             if url.startswith("http://") or url.startswith("https://"):
                 return url
+    return None
+
+
+def read_key():
+    for path in KEY_CANDIDATES:
+        if not path:
+            continue
+        # Env may hold the raw key (not a path).
+        if path and not os.path.isfile(path) and "/" not in path and "\\" not in path and len(path) >= 8:
+            return path.strip()
+        if os.path.isfile(path):
+            with open(path, "r", encoding="utf-8") as f:
+                key = f.read().strip()
+            if key:
+                return key
     return None
 
 
@@ -109,10 +130,14 @@ def main():
         "text": "*%s* just posted from Attic Gaming\nScore: *%d* · High: *%d*\nhttp://evilgame.com/attic.html"
         % (nick, score, high),
     }
+    headers = {"Content-Type": "application/json"}
+    key = read_key()
+    if key:
+        headers["Authorization"] = "Bearer %s" % key
     req = urllib.request.Request(
         webhook,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     try:
