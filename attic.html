@@ -3,25 +3,36 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Attic Gaming — EVILGAME</title>
+<title>Attic Gaming - EVILGAME</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
     height: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
     background: #0a0610;
     color: #c8f0c0;
     font-family: 'Press Start 2P', monospace;
     overflow: hidden;
     touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
   }
   body {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    padding: 10px;
+    gap: 8px;
+    padding: 8px;
+    padding:
+      max(8px, env(safe-area-inset-top, 0px))
+      max(8px, env(safe-area-inset-right, 0px))
+      max(8px, env(safe-area-inset-bottom, 0px))
+      max(8px, env(safe-area-inset-left, 0px));
   }
   .hud {
     width: min(720px, 96vw);
@@ -29,10 +40,18 @@
     flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
-    gap: 8px 12px;
-    font-size: clamp(8px, 2.2vw, 10px);
-    line-height: 1.5;
+    gap: 6px 10px;
+    font-size: clamp(7px, 2.1vw, 10px);
+    line-height: 1.45;
     color: #7cff9a;
+  }
+  @media (max-width: 420px) {
+    .hud { gap: 4px 8px; font-size: 7px; }
+    .bar { gap: 6px; }
+    a.back, button.reset { padding: 6px 8px; font-size: 7px; }
+    button.slack { font-size: 5px; padding: 4px 6px; }
+    #msg { min-height: 2.6em; font-size: 7px; }
+    body { gap: 6px; }
   }
   .hud span { color: #c8f0c0; }
   .hud .nick {
@@ -55,17 +74,22 @@
     position: relative;
     width: min(720px, 96vw);
     aspect-ratio: 4 / 3;
-    max-height: min(70vh, 540px);
+    max-height: min(70vh, 70dvh, 540px);
     border: 4px solid #3a3550;
     box-shadow: 0 0 0 4px #1a1528, 0 0 40px rgba(80, 255, 120, 0.12);
     background: #1a1410;
+    flex: 0 1 auto;
   }
   canvas {
     display: block;
     width: 100%;
     height: 100%;
     image-rendering: pixelated;
+    image-rendering: crisp-edges;
     cursor: grab;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
   canvas.dragging { cursor: grabbing; }
   #msg {
@@ -180,7 +204,7 @@
   </div>
   <div id="msg">Drag your guy. Grab those McIntyre nugs.</div>
   <div class="bar">
-    <a class="back" href="index.html">← PROGRAM MENU</a>
+    <a class="back" href="index.html">&lt;- PROGRAM MENU</a>
     <button type="button" class="slack" id="slackPost" title="Post nick + scores to #afg">POST TO SLACK</button>
     <button type="button" class="reset" id="reset">RESET</button>
   </div>
@@ -188,7 +212,24 @@
 (function () {
   var W = 640, H = 480;
   var canvas = document.getElementById('c');
-  var ctx = canvas.getContext('2d');
+  var ctx = canvas.getContext('2d', { alpha: false });
+  var viewDpr = 1;
+
+  function resizeCanvas() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (dpr < 1) dpr = 1;
+    viewDpr = dpr;
+    var bw = Math.round(W * dpr);
+    var bh = Math.round(H * dpr);
+    if (canvas.width !== bw || canvas.height !== bh) {
+      canvas.width = bw;
+      canvas.height = bh;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
   var elNick = document.getElementById('nick');
   var elScore = document.getElementById('score');
   var elHigh = document.getElementById('high');
@@ -230,7 +271,7 @@
         out.nick = String(o.nick).trim().slice(0, 18);
       }
       if (o && typeof o.highScore === 'number' && isFinite(o.highScore) && o.highScore > 0) {
-        out.highScore = Math.floor(o.highScore);
+        out.highScore = Math.min(999999, Math.floor(o.highScore));
       }
       if (o && o.niceSeen) out.niceSeen = true;
       return out;
@@ -258,7 +299,7 @@
     'GOOD MCINTYRE NUGS!',
     'MMN THOSE MCINTYRE NUGS',
     'MORE MCINTYRE PLEASE',
-    'NUG ACQUIRED — MCINTYRE STYLE'
+    'NUG ACQUIRED - MCINTYRE STYLE'
   ];
 
   var state = {
@@ -383,8 +424,9 @@
     return 'top';
   }
 
+  var _doorGeom = { x: 0, y: 0, w: 0, h: 0, cx: 0, cy: 0, r: 36, side: 'right' };
   function doorGeom() {
-    // Returns { x, y, w, h, cx, cy, r } for the open door on state.doorSide.
+    // Mutates and returns shared geom for the open door on state.doorSide.
     var side = state.doorSide || 'right';
     var w, h, x, y;
     if (side === 'left' || side === 'right') {
@@ -396,7 +438,10 @@
       x = W / 2 - w / 2;
       y = side === 'top' ? 40 : (H - 18 - h);
     }
-    return { x: x, y: y, w: w, h: h, cx: x + w / 2, cy: y + h / 2, r: 36, side: side };
+    _doorGeom.x = x; _doorGeom.y = y; _doorGeom.w = w; _doorGeom.h = h;
+    _doorGeom.cx = x + w / 2; _doorGeom.cy = y + h / 2; _doorGeom.r = 36;
+    _doorGeom.side = side;
+    return _doorGeom;
   }
 
   function placePlayerAtEntry(entrySide) {
@@ -463,6 +508,14 @@
     if (state.tooBig || state.nugsSinceShrink >= 15) {
       state.tooBig = true;
       state.belchertown = true;
+      state.doorLatch = true;
+      // Nudge off the door so the latch can clear and Belchertown portal is reachable.
+      var d = doorGeom();
+      var pr = playerRadius();
+      if (d.side === 'right') state.player.x = Math.min(state.player.x, d.x - pr - 4);
+      else if (d.side === 'left') state.player.x = Math.max(state.player.x, d.x + d.w + pr + 4);
+      else if (d.side === 'top') state.player.y = Math.max(state.player.y, d.y + d.h + pr + 4);
+      else state.player.y = Math.min(state.player.y, d.y - pr - 4);
       playBelchertownLine();
       say('TIME TO FUCK OFF TO BELCHERTOWN.');
       return;
@@ -523,7 +576,7 @@
         playDontLikeSalad();
       }
     } else {
-      say((it.kind === 'chopsticks' ? 'CHOPSTICKS' : 'FORTUNE COOKIE') + ' −5. ' + left + ' LEFT.');
+      say((it.kind === 'chopsticks' ? 'CHOPSTICKS' : 'FORTUNE COOKIE') + ' -5. ' + left + ' LEFT.');
     }
   }
 
@@ -541,7 +594,7 @@
     state.saladCloseT = 0;
     state.saladShouted = false;
     spawnBelchItems();
-    say('BELCHERTOWN. GRAB CHOPSTICKS & FORTUNE COOKIES (−5). SALAD LINES THE WALLS.');
+    say('BELCHERTOWN. GRAB CHOPSTICKS & FORTUNE COOKIES (-5). SALAD LINES THE WALLS.');
   }
 
   function returnToStartRoom() {
@@ -583,8 +636,8 @@
   function eatNug(n) {
     n.eaten = true;
     state.score += 4;
-    bumpHighIfNeeded();
     maybeNicePow();
+    bumpHighIfNeeded();
     state.roomNugs += 1;
     state.nugsSinceShrink += 1;
     state.size = 1 + state.nugsSinceShrink * 0.12;
@@ -710,7 +763,8 @@
     voicePriority = false;
   }
 
-  // opts.priority: Belchertown voice — cuts everything, and nothing else may cut it.
+  // opts.priority: Belchertown voice - cuts everything, and nothing else may cut it.
+  // Reuse pooled Audio elements (no per-play allocation) for iOS + perf.
   function playHtmlSfx(url, vol, opts) {
     try {
       opts = opts || {};
@@ -722,12 +776,10 @@
       try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e0) {}
       if (priority) voicePriority = true;
       else voicePriority = false;
-      // Prefer a fresh element with the same src — most reliable on iOS after unlock.
-      var a = new Audio();
-      try { a.setAttribute('playsinline', ''); a.playsInline = true; } catch (e1) {}
-      a.src = url;
+      var a = getSfxEl(url);
       a.muted = false;
       a.volume = vol == null ? 1 : vol;
+      try { a.currentTime = 0; } catch (e1) {}
       a.onended = function () {
         if (currentSfx === a) currentSfx = null;
         if (priority) clearVoicePriority();
@@ -736,26 +788,8 @@
       var p = a.play();
       if (p && typeof p.catch === 'function') {
         p.catch(function () {
-          // Last resort: replay the primed pool element.
-          try {
-            stopCurrentSfx();
-            var b = getSfxEl(url);
-            b.muted = false;
-            b.volume = vol == null ? 1 : vol;
-            try { b.currentTime = 0; } catch (e2) {}
-            b.onended = function () {
-              if (currentSfx === b) currentSfx = null;
-              if (priority) clearVoicePriority();
-            };
-            currentSfx = b;
-            var p2 = b.play();
-            if (p2 && typeof p2.catch === 'function') p2.catch(function () {
-              if (currentSfx === b) currentSfx = null;
-              if (priority) clearVoicePriority();
-            });
-          } catch (e3) {
-            if (priority) clearVoicePriority();
-          }
+          if (currentSfx === a) currentSfx = null;
+          if (priority) clearVoicePriority();
         });
       }
     } catch (err) {
@@ -857,36 +891,52 @@
     say('NICE!!!');
   }
 
-  function pointerPos(e) {
-    var rect = canvas.getBoundingClientRect();
-    var src = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
-    return {
-      x: (src.clientX - rect.left) * (W / rect.width),
-      y: (src.clientY - rect.top) * (H / rect.height)
-    };
+  var _ptr = { x: 0, y: 0 };
+  var _rect = { left: 0, top: 0, width: W, height: H };
+  var _rectDirty = true;
+  function invalidateRect() { _rectDirty = true; }
+  window.addEventListener('resize', invalidateRect);
+  window.addEventListener('scroll', invalidateRect, true);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', invalidateRect);
+    window.visualViewport.addEventListener('scroll', invalidateRect);
   }
 
-  function onDown(e) {
-    e.preventDefault();
-    unlockAudio();
+  function syncRect() {
+    if (!_rectDirty) return;
+    var r = canvas.getBoundingClientRect();
+    _rect.left = r.left;
+    _rect.top = r.top;
+    _rect.width = r.width || 1;
+    _rect.height = r.height || 1;
+    _rectDirty = false;
+  }
+
+  function pointerPos(e) {
+    syncRect();
+    var src = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
+    _ptr.x = (src.clientX - _rect.left) * (W / _rect.width);
+    _ptr.y = (src.clientY - _rect.top) * (H / _rect.height);
+    return _ptr;
+  }
+
+  var activePointerId = null;
+  var movePending = false;
+  var moveEvt = null;
+  var sfxWarm = false;
+
+  function warmSfx() {
+    if (sfxWarm) return;
+    sfxWarm = true;
     loadSlurps();
     loadDoorOpen();
     loadSaladLine();
     loadBelchertownLine();
     loadNiceLine();
     loadBurp();
-    var p = pointerPos(e);
-    // Drag anywhere on the canvas: finger need not be on the guy.
-    // Offset keeps him from jumping under the pointer; he moves with the drag.
-    state.dragging = true;
-    canvas.classList.add('dragging');
-    state.dragOff.x = state.player.x - p.x;
-    state.dragOff.y = state.player.y - p.y;
   }
 
-  function onMove(e) {
-    if (!state.dragging) return;
-    e.preventDefault();
+  function applyDragFromEvent(e) {
     var p = pointerPos(e);
     var r = playerRadius();
     if (state.recenterDrag) {
@@ -914,11 +964,58 @@
     state.player.y = y;
   }
 
+  function flushMove() {
+    movePending = false;
+    if (!state.dragging || !moveEvt) return;
+    applyDragFromEvent(moveEvt);
+  }
+
+  function onDown(e) {
+    if (e.pointerType === 'mouse' && e.button != null && e.button !== 0) return;
+    if (activePointerId != null && e.pointerId != null && e.pointerId !== activePointerId) return;
+    e.preventDefault();
+    unlockAudio();
+    warmSfx();
+    _rectDirty = true;
+    var p = pointerPos(e);
+    // Drag anywhere on the canvas: finger need not be on the guy.
+    state.dragging = true;
+    if (e.pointerId != null) activePointerId = e.pointerId;
+    canvas.classList.add('dragging');
+    state.dragOff.x = state.player.x - p.x;
+    state.dragOff.y = state.player.y - p.y;
+    try {
+      if (e.pointerId != null && canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+    } catch (e1) {}
+  }
+
+  function onMove(e) {
+    if (!state.dragging) return;
+    if (activePointerId != null && e.pointerId != null && e.pointerId !== activePointerId) return;
+    e.preventDefault();
+    // Coalesce high-freq touchmove/pointermove into one apply per animation frame.
+    moveEvt = e;
+    if (!movePending) {
+      movePending = true;
+      requestAnimationFrame(flushMove);
+    }
+  }
+
   function onUp(e) {
     if (!state.dragging) return;
+    if (activePointerId != null && e.pointerId != null && e.pointerId !== activePointerId) return;
     e.preventDefault();
+    if (movePending && moveEvt) {
+      applyDragFromEvent(moveEvt);
+      movePending = false;
+    }
     state.dragging = false;
+    activePointerId = null;
+    moveEvt = null;
     canvas.classList.remove('dragging');
+    try {
+      if (e.pointerId != null && canvas.releasePointerCapture) canvas.releasePointerCapture(e.pointerId);
+    } catch (e1) {}
   }
 
   // Silent WASD (no on-screen hint). Window-level so no canvas focus needed.
@@ -955,10 +1052,11 @@
     if (keys.a) dx -= 1;
     if (keys.d) dx += 1;
     if (!dx && !dy) return;
-    // Normalize diagonal so it isn't faster
+    // Normalize diagonal so it isn't faster; scale by frame dt (60fps baseline).
     var len = Math.sqrt(dx * dx + dy * dy);
-    dx = (dx / len) * WASD_SPEED;
-    dy = (dy / len) * WASD_SPEED;
+    var spd = WASD_SPEED * ((state._dt || 1 / 60) * 60);
+    dx = (dx / len) * spd;
+    dy = (dy / len) * spd;
     var r = playerRadius();
     var x = state.player.x + dx;
     var y = state.player.y + dy;
@@ -974,16 +1072,22 @@
     state.player.y = y;
   }
 
-  canvas.addEventListener('mousedown', onDown);
-  window.addEventListener('mousemove', onMove);
-  window.addEventListener('mouseup', onUp);
-  canvas.addEventListener('touchstart', onDown, { passive: false });
-  window.addEventListener('touchmove', onMove, { passive: false });
-  window.addEventListener('touchend', onUp, { passive: false });
-  canvas.addEventListener('pointerdown', function (e) {
-    // Extra unlock path for iOS Safari / Chrome (WebKit).
-    unlockAudio();
-  }, { passive: true });
+  // Prefer Pointer Events (Chrome + Safari). Fall back to mouse/touch only if absent.
+  if (window.PointerEvent) {
+    canvas.addEventListener('pointerdown', onDown, { passive: false });
+    canvas.addEventListener('pointermove', onMove, { passive: false });
+    canvas.addEventListener('pointerup', onUp, { passive: false });
+    canvas.addEventListener('pointercancel', onUp, { passive: false });
+    canvas.addEventListener('lostpointercapture', onUp, { passive: false });
+  } else {
+    canvas.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    canvas.addEventListener('touchstart', onDown, { passive: false });
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onUp, { passive: false });
+    window.addEventListener('touchcancel', onUp, { passive: false });
+  }
   elNick.addEventListener('click', function () {
     unlockAudio();
     renameNick();
@@ -993,10 +1097,12 @@
     resetAll();
   });
 
+  var slackInFlight = false;
   document.getElementById('slackPost').addEventListener('click', function () {
     var btn = document.getElementById('slackPost');
-    if (btn.disabled) return;
+    if (slackInFlight || btn.disabled) return;
     unlockAudio();
+    slackInFlight = true;
     btn.disabled = true;
     var payload = {
       nick: profile.nick,
@@ -1015,16 +1121,20 @@
       });
     }).then(function (res) {
       if (res.ok) {
-        say(profile.nick + ' POSTED TO #AFG — SCORE ' + state.score + ' / HIGH ' + profile.highScore);
+        say(profile.nick + ' POSTED TO #AFG - SCORE ' + state.score + ' / HIGH ' + profile.highScore);
       } else if (res.status === 503) {
-        say('SLACK NOT CONFIGURED YET — TELL GROK BOT');
+        say('SLACK NOT CONFIGURED YET - TELL GROK BOT');
       } else {
         say('SLACK POST FAILED');
       }
     }).catch(function () {
       say('SLACK POST FAILED');
     }).then(function () {
-      setTimeout(function () { btn.disabled = false; }, 1500);
+      // Brief cooldown after the request finishes (not mid-flight).
+      setTimeout(function () {
+        slackInFlight = false;
+        btn.disabled = false;
+      }, 1200);
     });
   });
 
@@ -1258,7 +1368,7 @@
     ctx.font = '14px "Press Start 2P"';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    var rows = 8, cols = 3;
+    var rows = 6, cols = 2;
     var i, j, x, y, wave;
     for (j = 0; j < rows; j++) {
       for (i = 0; i < cols; i++) {
@@ -1273,10 +1383,8 @@
         ctx.restore();
       }
     }
-    var g = ctx.createRadialGradient(state.player.x, state.player.y, 40, state.player.x, state.player.y, 280);
-    g.addColorStop(0, 'rgba(12, 24, 40, 0)');
-    g.addColorStop(1, 'rgba(4, 8, 16, 0.45)');
-    ctx.fillStyle = g;
+    // Flat vignette (no per-frame Gradient alloc) — fine on mobile GPUs.
+    ctx.fillStyle = 'rgba(4, 8, 16, 0.35)';
     ctx.fillRect(0, 0, W, H);
     drawSaladBorder();
     for (i = 0; i < state.belchItems.length; i++) drawBelchItem(state.belchItems[i]);
@@ -1288,7 +1396,7 @@
       ctx.fillStyle = '#ffe08a';
       ctx.fillText("I don't even like salad", W / 2, 22);
     } else {
-      ctx.fillText('PICK UP THE LOOT (−5 EACH)', W / 2, 22);
+      ctx.fillText('PICK UP THE LOOT (-5 EACH)', W / 2, 22);
     }
     ctx.textAlign = 'left';
   }
@@ -1443,7 +1551,7 @@
         state.player.y = Math.max(rim + pr, Math.min(H - rim - pr, state.player.y));
       } else {
         // ~3.5 seconds of salad crushing inward to center
-        state.saladCloseT += 1 / 60;
+        state.saladCloseT += (state._dt || 1 / 60);
         var t = Math.min(1, state.saladCloseT / 3.5);
         state.saladInset = 34 + t * (Math.min(W, H) * 0.42);
         // Push him toward the middle as the greens close
@@ -1490,7 +1598,13 @@
     }
   }
 
-  function frame() {
+  var lastTs = 0;
+  function frame(ts) {
+    if (!ts) ts = performance.now();
+    var dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 1 / 60;
+    lastTs = ts;
+    // Expose dt for salad crush timing (avoids 60fps assumption drift).
+    state._dt = dt;
     update();
     if (state.scene === 'belch') {
       drawBelchRoom();

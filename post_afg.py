@@ -29,9 +29,22 @@ def read_webhook():
     return None
 
 
+# Cap CGI body so a hostile client cannot fill memory via CONTENT_LENGTH.
+MAX_BODY = 4096
+
+
 def read_body():
-    length = int(os.environ.get("CONTENT_LENGTH") or 0)
+    try:
+        length = int(os.environ.get("CONTENT_LENGTH") or 0)
+    except Exception:
+        length = 0
+    if length < 0:
+        length = 0
+    if length > MAX_BODY:
+        return None  # signal oversized
     raw = sys.stdin.buffer.read(length) if length > 0 else b"{}"
+    if len(raw) > MAX_BODY:
+        return None
     try:
         return json.loads(raw.decode("utf-8") or "{}")
     except Exception:
@@ -62,6 +75,9 @@ def main():
         return
 
     data = read_body()
+    if data is None:
+        respond(413, {"ok": False, "error": "payload too large"})
+        return
     nick = str(data.get("nick") or "").strip()[:24]
     try:
         score = int(data.get("score"))
@@ -74,6 +90,10 @@ def main():
 
     if not nick or score is None or high is None:
         respond(400, {"ok": False, "error": "need nick, score, highScore"})
+        return
+    # Bound numeric fields; never echo request/webhook guts in errors.
+    if score < 0 or score > 999999 or high < 0 or high > 999999:
+        respond(400, {"ok": False, "error": "score out of range"})
         return
 
     webhook = read_webhook()
@@ -101,7 +121,8 @@ def main():
         respond(200, {"ok": True})
     except urllib.error.HTTPError as e:
         respond(502, {"ok": False, "error": "webhook HTTP %d" % e.code})
-    except Exception as e:
+    except Exception:
+        # Do not include exception text — may contain the webhook URL.
         respond(502, {"ok": False, "error": "webhook failed"})
 
 
