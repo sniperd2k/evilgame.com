@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>PICKLE ATTIC — evilgame.com</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: #0d0814;
+    color: #f0e6c8;
+    font-family: 'Press Start 2P', monospace;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  h1 {
+    font-size: 14px;
+    letter-spacing: 1px;
+    color: #7dff9a;
+    text-shadow: 2px 2px 0 #1a3d22;
+  }
+  #wrap {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    border: 4px solid #3a2a18;
+    box-shadow: 0 0 0 4px #1a1208, 8px 8px 0 #000;
+    background: #1a1208;
+  }
+  canvas {
+    display: block;
+    width: 640px;
+    height: 480px;
+    max-width: 95vw;
+    max-height: 70vh;
+    background: #2a1c10;
+  }
+  #hud {
+    display: flex;
+    gap: 24px;
+    font-size: 10px;
+    color: #f0e6c8;
+  }
+  #hud span b { color: #ffd24a; }
+  #hint {
+    font-size: 8px;
+    color: #9a8660;
+    text-align: center;
+    line-height: 1.8;
+    max-width: 640px;
+  }
+  a { color: #7dff9a; }
+</style>
+</head>
+<body>
+  <h1>PICKLE ATTIC</h1>
+  <div id="hud">
+    <span>SCORE <b id="score">0</b></span>
+    <span>DOORS <b id="doors">0</b>/<span id="doorsMax">0</span></span>
+  </div>
+  <div id="wrap"><canvas id="c" width="320" height="240"></canvas></div>
+  <p id="hint">ARROWS / WASD move · SPACE / E open door · R reset<br/>
+  You are a little pickle. Open every attic door for points.<br/>
+  <a href="index.html">back</a></p>
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  const TILE = 16;
+  const COLS = 20;
+  const ROWS = 15;
+
+  // 0 floor, 1 wall, 2 crate, 3 window, 4 door closed, 5 door open, 6 rug
+  const map = [
+  // 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,1],
+    [1,0,2,2,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,1],
+    [1,0,2,2,0,0,6,6,6,0,0,0,0,0,0,2,2,0,0,1],
+    [1,0,0,0,0,0,6,6,6,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,1],
+    [1,4,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,4,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,1],
+    [1,0,0,2,2,0,0,0,0,0,0,0,0,0,0,0,2,0,0,1],
+    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,0,0,0,0,0,3,3,0,0,3,3,0,0,0,0,0,0,1],
+    [1,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,1],
+    [1,0,0,0,0,0,0,0,0,4,0,0,0,0,0,0,0,0,0,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  ];
+
+  const doorTiles = [];
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      if (map[y][x] === 4) doorTiles.push({ x, y, open: false, id: doorTiles.length });
+    }
+  }
+  document.getElementById('doorsMax').textContent = String(doorTiles.length);
+
+  const player = {
+    x: 10 * TILE + 4,
+    y: 8 * TILE + 4,
+    w: 10,
+    h: 12,
+    speed: 1.15,
+    facing: 1, // 1 right, -1 left
+    bob: 0,
+  };
+
+  let score = 0;
+  let openedCount = 0;
+  let flash = 0;
+  let msg = 'open the doors, pickle';
+  let msgTimer = 180;
+  const keys = Object.create(null);
+  const dust = Array.from({ length: 28 }, () => ({
+    x: Math.random() * 320,
+    y: Math.random() * 240,
+    s: 0.2 + Math.random() * 0.5,
+    a: Math.random(),
+  }));
+
+  // tiny beep
+  let audioCtx = null;
+  function beep(freq, dur, type = 'square', vol = 0.04) {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = type;
+      o.frequency.value = freq;
+      g.gain.value = vol;
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start();
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+      o.stop(audioCtx.currentTime + dur);
+    } catch (_) {}
+  }
+
+  function solid(tx, ty) {
+    if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) return true;
+    const t = map[ty][tx];
+    return t === 1 || t === 2 || t === 4; // closed doors block
+  }
+
+  function rectHitsSolid(x, y, w, h) {
+    const x0 = Math.floor(x / TILE);
+    const y0 = Math.floor(y / TILE);
+    const x1 = Math.floor((x + w - 0.01) / TILE);
+    const y1 = Math.floor((y + h - 0.01) / TILE);
+    for (let ty = y0; ty <= y1; ty++) {
+      for (let tx = x0; tx <= x1; tx++) {
+        if (solid(tx, ty)) return true;
+      }
+    }
+    return false;
+  }
+
+  function tryMove(dx, dy) {
+    let nx = player.x + dx;
+    let ny = player.y + dy;
+    if (!rectHitsSolid(nx, player.y, player.w, player.h)) player.x = nx;
+    if (!rectHitsSolid(player.x, ny, player.w, player.h)) player.y = ny;
+  }
+
+  function nearDoor() {
+    const cx = player.x + player.w / 2;
+    const cy = player.y + player.h / 2;
+    let best = null;
+    let bestD = 18;
+    for (const d of doorTiles) {
+      if (d.open) continue;
+      const dx = (d.x + 0.5) * TILE - cx;
+      const dy = (d.y + 0.5) * TILE - cy;
+      const dist = Math.hypot(dx, dy);
+      if (dist < bestD) { bestD = dist; best = d; }
+    }
+    return best;
+  }
+
+  function openDoor(d) {
+    if (!d || d.open) return;
+    d.open = true;
+    map[d.y][d.x] = 5;
+    openedCount++;
+    const pts = 100 + openedCount * 25;
+    score += pts;
+    flash = 12;
+    msg = '+' + pts + ' DOOR OPEN!';
+    msgTimer = 90;
+    document.getElementById('score').textContent = String(score);
+    document.getElementById('doors').textContent = String(openedCount);
+    beep(220, 0.06); beep(330, 0.08); beep(440, 0.1);
+    if (openedCount >= doorTiles.length) {
+      msg = 'ALL DOORS! ATTIC CLEARED +500';
+      score += 500;
+      document.getElementById('score').textContent = String(score);
+      msgTimer = 200;
+      beep(523, 0.12); beep(659, 0.12); beep(784, 0.18);
+    }
+  }
+
+  function resetGame() {
+    for (const d of doorTiles) {
+      d.open = false;
+      map[d.y][d.x] = 4;
+    }
+    player.x = 10 * TILE + 4;
+    player.y = 8 * TILE + 4;
+    score = 0;
+    openedCount = 0;
+    flash = 0;
+    msg = 'attic reset. open doors again!';
+    msgTimer = 120;
+    document.getElementById('score').textContent = '0';
+    document.getElementById('doors').textContent = '0';
+    beep(160, 0.08);
+  }
+
+  window.addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+    if (e.code === 'Space' || e.code === 'KeyE') openDoor(nearDoor());
+    if (e.code === 'KeyR') resetGame();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  });
+  window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+  function drawTile(tx, ty, t) {
+    const x = tx * TILE, y = ty * TILE;
+    // floor planks
+    if (t === 0 || t === 3 || t === 5 || t === 6 || t === 4) {
+      ctx.fillStyle = (tx + ty) % 2 ? '#3b2918' : '#342314';
+      ctx.fillRect(x, y, TILE, TILE);
+      ctx.fillStyle = '#2a1a0e';
+      ctx.fillRect(x, y + TILE - 1, TILE, 1);
+    }
+    if (t === 6) {
+      ctx.fillStyle = '#5a2030';
+      ctx.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
+      ctx.fillStyle = '#7a3040';
+      ctx.fillRect(x + 3, y + 3, TILE - 6, TILE - 6);
+    }
+    if (t === 1) {
+      ctx.fillStyle = '#1a120c';
+      ctx.fillRect(x, y, TILE, TILE);
+      ctx.fillStyle = '#4a3420';
+      ctx.fillRect(x + 1, y + 1, TILE - 2, TILE - 2);
+      ctx.fillStyle = '#2e2014';
+      ctx.fillRect(x + 3, y + 4, 2, 2);
+      ctx.fillRect(x + 10, y + 9, 2, 2);
+    }
+    if (t === 2) {
+      ctx.fillStyle = '#6b4420';
+      ctx.fillRect(x + 1, y + 2, TILE - 2, TILE - 3);
+      ctx.fillStyle = '#8a5a28';
+      ctx.fillRect(x + 2, y + 3, TILE - 4, 3);
+      ctx.fillStyle = '#3a2410';
+      ctx.fillRect(x + 2, y + 8, TILE - 4, 1);
+      ctx.fillRect(x + 7, y + 3, 1, TILE - 4);
+    }
+    if (t === 3) {
+      ctx.fillStyle = '#1a2840';
+      ctx.fillRect(x, y, TILE, TILE);
+      ctx.fillStyle = '#6ec8ff';
+      ctx.globalAlpha = 0.35;
+      ctx.fillRect(x + 2, y + 2, TILE - 4, TILE - 4);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#cdefff';
+      ctx.fillRect(x + 3, y + 3, 2, 2);
+      ctx.fillStyle = '#5a4030';
+      ctx.fillRect(x, y, TILE, 2);
+      ctx.fillRect(x, y + TILE - 2, TILE, 2);
+      ctx.fillRect(x + 7, y, 2, TILE);
+    }
+    if (t === 4) {
+      // closed door
+      ctx.fillStyle = '#5a3018';
+      ctx.fillRect(x + 2, y + 1, TILE - 4, TILE - 2);
+      ctx.fillStyle = '#7a4820';
+      ctx.fillRect(x + 3, y + 2, TILE - 6, TILE - 4);
+      ctx.fillStyle = '#d4a84a';
+      ctx.fillRect(x + 11, y + 7, 2, 2);
+      ctx.fillStyle = '#2a1808';
+      ctx.fillRect(x + 2, y + 1, TILE - 4, 1);
+    }
+    if (t === 5) {
+      // open door = darker doorway
+      ctx.fillStyle = '#0a0604';
+      ctx.fillRect(x + 3, y + 1, TILE - 6, TILE - 2);
+      ctx.fillStyle = '#5a3018';
+      ctx.fillRect(x + 2, y + 1, 2, TILE - 2);
+      ctx.fillRect(x + TILE - 4, y + 1, 2, TILE - 2);
+    }
+  }
+
+  function drawPickle(px, py) {
+    const bob = Math.sin(player.bob) * 1;
+    const x = Math.round(px);
+    const y = Math.round(py + bob);
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(x + 1, y + 11, 8, 2);
+    // body
+    ctx.fillStyle = '#3d8f3a';
+    ctx.fillRect(x + 2, y + 2, 6, 9);
+    ctx.fillStyle = '#56b84a';
+    ctx.fillRect(x + 3, y + 3, 4, 7);
+    // bumps / warts
+    ctx.fillStyle = '#2f6e2c';
+    ctx.fillRect(x + 2, y + 4, 2, 2);
+    ctx.fillRect(x + 6, y + 6, 2, 2);
+    ctx.fillRect(x + 3, y + 8, 2, 1);
+    // stem
+    ctx.fillStyle = '#6b3a12';
+    ctx.fillRect(x + 4, y, 2, 2);
+    ctx.fillStyle = '#4a8f2a';
+    ctx.fillRect(x + 6, y, 2, 1);
+    // eye
+    const eyeX = player.facing > 0 ? x + 5 : x + 3;
+    ctx.fillStyle = '#102010';
+    ctx.fillRect(eyeX, y + 5, 2, 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(eyeX, y + 5, 1, 1);
+    // little smile
+    ctx.fillStyle = '#1a4018';
+    ctx.fillRect(x + 4, y + 8, 3, 1);
+  }
+
+  function drawMoonlight() {
+    ctx.fillStyle = 'rgba(140, 190, 255, 0.06)';
+    ctx.fillRect(7 * TILE, 0, 2 * TILE, 12 * TILE);
+    ctx.fillRect(11 * TILE, 0, 2 * TILE, 12 * TILE);
+  }
+
+  function drawUI() {
+    if (msgTimer > 0) {
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(20, 210, 280, 22);
+      ctx.fillStyle = '#ffd24a';
+      ctx.font = '8px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(msg, 160, 224);
+      ctx.textAlign = 'left';
+    }
+    const d = nearDoor();
+    if (d) {
+      ctx.fillStyle = '#7dff9a';
+      ctx.font = '8px monospace';
+      ctx.fillText('SPACE: OPEN', Math.round(d.x * TILE - 8), Math.round(d.y * TILE - 2));
+    }
+    if (flash > 0) {
+      ctx.fillStyle = `rgba(255,220,100,${flash / 20})`;
+      ctx.fillRect(0, 0, 320, 240);
+    }
+  }
+
+  function update() {
+    let dx = 0, dy = 0;
+    if (keys.ArrowLeft || keys.KeyA) { dx -= player.speed; player.facing = -1; }
+    if (keys.ArrowRight || keys.KeyD) { dx += player.speed; player.facing = 1; }
+    if (keys.ArrowUp || keys.KeyW) dy -= player.speed;
+    if (keys.ArrowDown || keys.KeyS) dy += player.speed;
+    if (dx && dy) { dx *= 0.707; dy *= 0.707; }
+    if (dx || dy) {
+      tryMove(dx, dy);
+      player.bob += 0.35;
+    }
+    if (msgTimer > 0) msgTimer--;
+    if (flash > 0) flash--;
+    for (const p of dust) {
+      p.y += p.s * 0.15;
+      p.a += 0.02;
+      if (p.y > 240) { p.y = 0; p.x = Math.random() * 320; }
+    }
+  }
+
+  function draw() {
+    ctx.fillStyle = '#1a1208';
+    ctx.fillRect(0, 0, 320, 240);
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) drawTile(x, y, map[y][x]);
+    }
+    drawMoonlight();
+    for (const p of dust) {
+      ctx.fillStyle = `rgba(220,200,160,${0.15 + 0.15 * Math.sin(p.a)})`;
+      ctx.fillRect(p.x | 0, p.y | 0, 1, 1);
+    }
+    // title plate on wall
+    ctx.fillStyle = '#2a1a10';
+    ctx.fillRect(72, 20, 176, 14);
+    ctx.fillStyle = '#8a6a40';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('YE OLDE ATTIC', 160, 30);
+    ctx.textAlign = 'left';
+    drawPickle(player.x, player.y);
+    drawUI();
+  }
+
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+</script>
+</body>
+</html>
