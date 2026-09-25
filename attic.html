@@ -335,8 +335,12 @@
     if (left <= 0) {
       state.saladClosing = true;
       state.saladCloseT = 0;
-      state.saladShouted = false;
-      say('SALAD IS CLOSING IN...');
+      // Shout while it collapses — not after.
+      if (!state.saladShouted) {
+        state.saladShouted = true;
+        say("I don't even like salad");
+        playDontLikeSalad();
+      }
     } else {
       say((it.kind === 'chopsticks' ? 'CHOPSTICKS' : 'FORTUNE COOKIE') + ' −5. ' + left + ' LEFT.');
     }
@@ -384,17 +388,11 @@
 
   function finishBelchertownSalad() {
     if (state.scene !== 'belch') return;
-    if (state.saladShouted) return;
-    state.saladShouted = true;
+    // Voice already played mid-collapse; dump him small in room 1.
     state.saladClosing = false;
     state.player.x = W / 2;
     state.player.y = H / 2;
-    say("I don't even like salad");
-    playDontLikeSalad();
-    // Let the silly voice land, then dump him small in room 1.
-    setTimeout(function () {
-      if (state.scene === 'belch') returnToStartRoom();
-    }, 2600);
+    returnToStartRoom();
   }
 
   function hitBelchertown() {
@@ -839,6 +837,43 @@
     }
   }
 
+  function drawTomato(x, y, s) {
+    ctx.fillStyle = '#d03028';
+    ctx.beginPath();
+    ctx.arc(x, y, 5 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#f06050';
+    ctx.beginPath();
+    ctx.arc(x - 1.5 * s, y - 1.5 * s, 1.8 * s, 0, Math.PI * 2);
+    ctx.fill();
+    // stem nub
+    ctx.fillStyle = '#3a8020';
+    ctx.fillRect(x - 1 * s, y - 6 * s, 2 * s, 3 * s);
+  }
+
+  function drawCucumber(x, y, ang, s) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(ang);
+    ctx.fillStyle = '#4a9a38';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 10 * s, 3.5 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#2e6a24';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-6 * s, -1 * s);
+    ctx.lineTo(6 * s, -1 * s);
+    ctx.moveTo(-5 * s, 1.2 * s);
+    ctx.lineTo(5 * s, 1.2 * s);
+    ctx.stroke();
+    ctx.fillStyle = '#c8e878';
+    ctx.beginPath();
+    ctx.ellipse(-2 * s, -0.8 * s, 2 * s, 0.8 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   function drawSaladBorder() {
     var inset = state.saladInset;
     // leafy green rim around the room
@@ -847,27 +882,65 @@
     ctx.fillRect(0, H - inset, W, inset);
     ctx.fillRect(0, 0, inset, H);
     ctx.fillRect(W - inset, 0, inset, H);
+    // darker lettuce under-layer
+    ctx.fillStyle = '#2e6020';
+    ctx.fillRect(0, 0, W, Math.max(4, inset * 0.22));
+    ctx.fillRect(0, H - Math.max(4, inset * 0.22), W, Math.max(4, inset * 0.22));
+    ctx.fillRect(0, 0, Math.max(4, inset * 0.22), H);
+    ctx.fillRect(W - Math.max(4, inset * 0.22), 0, Math.max(4, inset * 0.22), H);
+
     // leaf speckles
-    var i, lx, ly;
+    var i, lx, ly, s;
     ctx.fillStyle = '#6ab040';
     for (i = 0; i < 40; i++) {
       lx = (i * 47) % W;
-      ly = (i % 2 === 0) ? ((i * 13) % inset) : (H - inset + ((i * 17) % Math.max(1, inset)));
+      ly = (i % 2 === 0) ? ((i * 13) % Math.max(1, inset)) : (H - inset + ((i * 17) % Math.max(1, inset)));
       ctx.beginPath();
       ctx.ellipse(lx, ly, 6, 3, i * 0.4, 0, Math.PI * 2);
       ctx.fill();
     }
     for (i = 0; i < 24; i++) {
       ly = (i * 37) % H;
-      lx = (i % 2 === 0) ? ((i * 11) % inset) : (W - inset + ((i * 19) % Math.max(1, inset)));
+      lx = (i % 2 === 0) ? ((i * 11) % Math.max(1, inset)) : (W - inset + ((i * 19) % Math.max(1, inset)));
       ctx.beginPath();
       ctx.ellipse(lx, ly, 3, 6, i * 0.5, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    // cucumbers + tomatoes along the rim (more as it closes = denser salad)
+    s = Math.max(0.7, Math.min(1.4, inset / 50));
+    var dens = state.saladClosing ? 14 : 10;
+    for (i = 0; i < dens; i++) {
+      // top / bottom rows
+      lx = 20 + (i + 0.5) * ((W - 40) / dens);
+      ly = Math.max(8, inset * (0.35 + (i % 3) * 0.15));
+      if (i % 2 === 0) drawTomato(lx, ly, s);
+      else drawCucumber(lx, ly, 0.15 * ((i % 5) - 2), s);
+      ly = H - Math.max(8, inset * (0.35 + ((i + 1) % 3) * 0.15));
+      if (i % 2 === 1) drawTomato(lx, ly, s);
+      else drawCucumber(lx, ly, -0.2 * ((i % 4) - 1.5), s);
+    }
+    dens = state.saladClosing ? 10 : 7;
+    for (i = 0; i < dens; i++) {
+      // left / right columns
+      ly = 30 + (i + 0.5) * ((H - 60) / dens);
+      lx = Math.max(8, inset * (0.35 + (i % 3) * 0.15));
+      if (i % 2 === 0) drawCucumber(lx, ly, Math.PI / 2 + 0.1, s);
+      else drawTomato(lx, ly, s);
+      lx = W - Math.max(8, inset * (0.35 + ((i + 2) % 3) * 0.15));
+      if (i % 2 === 1) drawCucumber(lx, ly, Math.PI / 2 - 0.1, s);
+      else drawTomato(lx, ly, s);
+    }
+
     ctx.fillStyle = '#c8f080';
     ctx.font = '7px "Press Start 2P"';
     ctx.textAlign = 'center';
-    ctx.fillText('LEAFY GREEN SALAD', W / 2, Math.max(12, inset * 0.55));
+    if (state.saladClosing) {
+      ctx.fillStyle = '#ffe08a';
+      ctx.fillText("I don't even like salad", W / 2, Math.max(14, Math.min(inset * 0.55, 28)));
+    } else {
+      ctx.fillText('LEAFY GREEN SALAD', W / 2, Math.max(12, inset * 0.55));
+    }
     ctx.textAlign = 'left';
   }
 
@@ -904,7 +977,8 @@
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     if (state.saladClosing) {
-      ctx.fillText('SALAD CLOSING IN', W / 2, 22);
+      ctx.fillStyle = '#ffe08a';
+      ctx.fillText("I don't even like salad", W / 2, 22);
     } else {
       ctx.fillText('PICK UP THE LOOT (−5 EACH)', W / 2, 22);
     }
