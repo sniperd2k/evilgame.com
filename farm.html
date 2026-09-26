@@ -130,7 +130,7 @@
   #fanfare.on { display: flex; }
   #fanfare .burst {
     text-align: center;
-    animation: crow-pop 1.8s ease-out forwards;
+    animation: crow-pop 3.5s ease-out forwards;
   }
   #fanfare .word {
     font-size: clamp(14px, 4.5vw, 22px);
@@ -800,7 +800,7 @@
       elFanfare.classList.remove('on');
       elFanfare.setAttribute('aria-hidden', 'true');
       fanfareTimer = null;
-    }, 1800);
+    }, 3500);
   }
 
   function levelCleared() {
@@ -1369,47 +1369,87 @@
   function updateRonnie(dt) {
     var r = state.ronnie;
     var p = state.player;
-    var dx, dy, d, target, sx, sy;
+    var dx, dy, d, target, sx, sy, wp, nShelves, hitsNeeded;
     state.modeT += dt;
     updateShelfSlide(dt);
 
     if (r) tickRonnieCrow(r, dt);
 
     if (state.mode === 'ronnie_intro') {
-      // Burst IN through the front door (right), dash toward Mandy
+      // Burst IN through the front door (right), dash toward Mandy (~3.4s)
       var inX = Math.min(p.x + 40, W * 0.62);
       var inY = p.y;
       dx = inX - r.x;
       dy = inY - r.y;
       d = Math.sqrt(dx * dx + dy * dy) || 1;
-      r.x += (dx / d) * 6.5 * (dt * 60);
-      r.y += (dy / d) * 6.5 * (dt * 60);
+      r.x += (dx / d) * 2.15 * (dt * 60);
+      r.y += (dy / d) * 2.15 * (dt * 60);
       r.y += Math.sin(state.modeT * 10) * 1.5;
-      if (state.modeT > 1.15 || dist(r.x, r.y, p.x, p.y) < 70) {
+      // Don't early-out on proximity alone — stretch the entrance beat
+      if (state.modeT > 3.5 || (state.modeT > 3.2 && dist(r.x, r.y, p.x, p.y) < 48)) {
         state.mode = 'ronnie_chase';
         state.modeT = 0;
-        say('RONNIE CHASES MANDY OUT THE FRONT DOOR!');
+        if (r) {
+          r.chaseWp = 0;
+          // 2–3 near-miss loops: left / back / toward door, then exit sticks
+          r.chaseWaypoints = [
+            { x: W * 0.18, y: H * 0.30, exit: false, line: 'LEFT AISLE! RUN!' },
+            { x: W * 0.22, y: H * 0.78, exit: false, line: 'BACK OF THE STORE!' },
+            { x: W * 0.70, y: DOOR.cy, exit: false, line: 'ALMOST OUT — MISS!' },
+            { x: W * 0.16, y: H * 0.48, exit: false, line: 'HERDED LEFT AGAIN!' },
+            { x: W * 0.74, y: DOOR.cy, exit: false, line: 'DOOR NEAR-MISS!' },
+            { x: DOOR.cx + 18, y: DOOR.cy, exit: true, line: 'OUT THE FRONT DOOR!' }
+          ];
+        }
+        say('RONNIE CHASES MANDY AROUND THE STORE!');
       }
       return;
     }
 
     if (state.mode === 'ronnie_chase') {
-      // Force Mandy toward the front door; Ronnie pursues, crowing the whole way
-      p.x += (DOOR.cx - p.x) * Math.min(1, dt * 2.4);
-      p.y += (DOOR.cy - p.y) * Math.min(1, dt * 2.4);
+      // Herd Mandy: left/back/toward-door near-misses (~7–8s) before exit sticks
+      if (!r.chaseWaypoints) {
+        r.chaseWp = 0;
+        r.chaseWaypoints = [
+          { x: W * 0.18, y: H * 0.30, exit: false },
+          { x: W * 0.22, y: H * 0.78, exit: false },
+          { x: W * 0.70, y: DOOR.cy, exit: false },
+          { x: W * 0.16, y: H * 0.48, exit: false },
+          { x: W * 0.74, y: DOOR.cy, exit: false },
+          { x: DOOR.cx + 18, y: DOOR.cy, exit: true }
+        ];
+      }
+      if (r.chaseWp == null) r.chaseWp = 0;
+      if (r.chaseWp >= r.chaseWaypoints.length) r.chaseWp = r.chaseWaypoints.length - 1;
+      wp = r.chaseWaypoints[r.chaseWp];
+      p.x += (wp.x - p.x) * Math.min(1, dt * 1.55);
+      p.y += (wp.y - p.y) * Math.min(1, dt * 1.55);
+      // Cap X so near-miss approaches never accidentally exit early
+      if (!wp.exit) p.x = Math.min(p.x, W - 72);
       dx = p.x - r.x;
       dy = p.y - r.y;
       d = Math.sqrt(dx * dx + dy * dy) || 1;
-      r.x += (dx / d) * 5.6 * (dt * 60);
-      r.y += (dy / d) * 5.6 * (dt * 60);
+      r.x += (dx / d) * 3.8 * (dt * 60);
+      r.y += (dy / d) * 3.8 * (dt * 60);
       r.y += Math.sin(state.modeT * 14) * 1.2;
 
-      if (p.x > W - 40 || state.modeT > 2.6) {
+      if (dist(p.x, p.y, wp.x, wp.y) < 26) {
+        if (wp.line) say(wp.line);
+        if (wp.exit) {
+          p.x = W + 40;
+        } else {
+          r.chaseWp += 1;
+        }
+      }
+
+      // Hard timeout forces the exit stick (~7.8s chase target)
+      if ((wp.exit && p.x > W - 40) || state.modeT > 7.8) {
         // Mandy is out — Ronnie bounce-pass reshuffles EVERY obstacle
         p.x = W + 40;
         assignShelfShuffleTargets();
         r.bounceI = 0;
         r.bounceCd = 0;
+        r.bounceHits = 0;
         state.mode = 'ronnie_bounce';
         state.modeT = 0;
         say('RONNIE BOUNCE-PASS! AISLES GO FLYING!');
@@ -1419,25 +1459,29 @@
 
     if (state.mode === 'ronnie_bounce') {
       if (r.bounceCd > 0) r.bounceCd -= dt;
+      if (r.bounceHits == null) r.bounceHits = 0;
+      nShelves = state.shelves.length;
+      hitsNeeded = Math.max(1, nShelves * 2); // thorough: hit every shelf twice
       // Zip between shelf centers, physically sliding them to new spots
-      if (state.shelves.length) {
-        target = state.shelves[r.bounceI % state.shelves.length];
+      if (nShelves) {
+        target = state.shelves[r.bounceI % nShelves];
         sx = target.x + target.w / 2;
         sy = target.y + target.h / 2;
         dx = sx - r.x;
         dy = sy - r.y;
         d = Math.sqrt(dx * dx + dy * dy) || 1;
-        r.x += (dx / d) * 7.2 * (dt * 60);
-        r.y += (dy / d) * 7.2 * (dt * 60);
+        r.x += (dx / d) * 4.0 * (dt * 60);
+        r.y += (dy / d) * 4.0 * (dt * 60);
         r.y += Math.sin(state.modeT * 16) * 2;
         bounceRonnieOffShelves(r);
         if (d < 28 && r.bounceCd <= 0) {
-          r.bounceI = (r.bounceI + 1) % state.shelves.length;
-          r.bounceCd = 0.08;
+          r.bounceI = (r.bounceI + 1) % nShelves;
+          r.bounceHits += 1;
+          r.bounceCd = 0.10;
         }
       }
-      // After a full pinball pass (or timeout), Mandy returns with broom
-      if (state.modeT > 2.4 || (!state.shelfSlide && state.modeT > 1.4)) {
+      // After two full pinball passes (or ~7.2s timeout), Mandy returns with broom
+      if (state.modeT > 7.4 || (r.bounceHits >= hitsNeeded && !state.shelfSlide && state.modeT > 5.2)) {
         // Snap remaining shelves to targets
         var i, s;
         for (i = 0; i < state.shelves.length; i++) {
@@ -1456,15 +1500,15 @@
     }
 
     if (state.mode === 'mandy_return') {
-      // Mandy marches back in with broom; Ronnie freezes mid-crow
+      // Mandy marches back in with broom; Ronnie freezes mid-crow (~3.3s)
       var homeX = W * 0.45;
       var homeY = H / 2;
-      p.x += (homeX - p.x) * Math.min(1, dt * 2.8);
-      p.y += (homeY - p.y) * Math.min(1, dt * 2.8);
+      p.x += (homeX - p.x) * Math.min(1, dt * 0.95);
+      p.y += (homeY - p.y) * Math.min(1, dt * 0.95);
       if (r) {
         r.y += Math.sin(state.modeT * 10) * 0.8;
       }
-      if (state.modeT > 1.1 || dist(p.x, p.y, homeX, homeY) < 18) {
+      if (state.modeT > 3.4 || (state.modeT > 3.0 && dist(p.x, p.y, homeX, homeY) < 14)) {
         state.mode = 'broom_chase';
         state.modeT = 0;
         say('SHOO, RONNIE! BROOM BEATS ROOSTER!');
@@ -1473,31 +1517,34 @@
     }
 
     if (state.mode === 'broom_chase') {
-      // Mandy shuffles Ronnie out the front door with the broom
+      // Mandy shuffles Ronnie out the front door with the broom (~6.9s)
       if (!r) {
         state.mode = 'soft_reset';
         state.modeT = 0;
         return;
       }
-      // Herd Ronnie toward door
-      var outX = DOOR.cx + 30;
-      var outY = DOOR.cy;
+      // Zigzag herd: hold Ronnie in-store until the broom finale has played out
+      var phase = Math.min(1, state.modeT / 6.2);
+      var zig = Math.sin(state.modeT * 2.2) * (1 - phase) * 90;
+      var outX = (W * 0.35) * (1 - phase) + (DOOR.cx + 30) * phase + zig;
+      var outY = DOOR.cy + Math.sin(state.modeT * 3.1) * 40 * (1 - phase);
       // Mandy stays behind Ronnie, poking
       var behindX = r.x - 36;
       var behindY = r.y;
-      p.x += (behindX - p.x) * Math.min(1, dt * 3.2);
-      p.y += (behindY - p.y) * Math.min(1, dt * 3.2);
+      p.x += (behindX - p.x) * Math.min(1, dt * 1.15);
+      p.y += (behindY - p.y) * Math.min(1, dt * 1.15);
       dx = outX - r.x;
       dy = outY - r.y;
       d = Math.sqrt(dx * dx + dy * dy) || 1;
-      r.x += (dx / d) * 5.8 * (dt * 60);
-      r.y += (dy / d) * 5.8 * (dt * 60);
+      r.x += (dx / d) * 2.4 * (dt * 60);
+      r.y += (dy / d) * 2.4 * (dt * 60);
       r.y += Math.sin(state.modeT * 20) * 1.5;
       // Broom poke impulse
       if (dist(p.x, p.y, r.x, r.y) < 50) {
-        r.x += (dx / d) * 2.5;
+        r.x += (dx / d) * 0.9;
       }
-      if (r.x > W - 20 || state.modeT > 2.3) {
+      // Exit only after the stretched broom beat (or hard timeout)
+      if ((r.x > W - 20 && state.modeT > 6.5) || state.modeT > 6.9) {
         state.ronnie = null;
         state.mode = 'soft_reset';
         state.modeT = 0;

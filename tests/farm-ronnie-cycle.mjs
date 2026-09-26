@@ -20,7 +20,7 @@ function assert(cond, msg) {
   if (!cond) throw new Error('ASSERT: ' + msg);
 }
 
-async function waitForApi(page, ms = 8000) {
+async function waitForApi(page, ms = 15000) {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) {
     const ok = await page.evaluate(() => !!(window.__MANDY_STORE__ && window.__MANDY_STORE__.getState));
@@ -37,7 +37,7 @@ async function run() {
     args: ['--no-sandbox', '--disable-gpu', '--allow-file-access-from-files']
   });
   const page = await browser.newPage();
-  page.setDefaultTimeout(20000);
+  page.setDefaultTimeout(90000);
 
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -102,15 +102,28 @@ async function run() {
     check(api.getState().dragging === false, 'dragging cleared when cinema starts');
     check(api.getActivePointerId() == null, 'activePointerId cleared when cinema starts (root-cause fix)');
 
-    // Drive full cinema until soft reset → play
+    // Drive full cinema until soft reset → play (~28–30s @ 60fps ≈ 1800 frames)
     let guard = 0;
-    while (api.getState().mode !== 'play' && guard < 1200) {
+    const phaseFrames = {};
+    let lastMode = api.getState().mode;
+    phaseFrames[lastMode] = 0;
+    while (api.getState().mode !== 'play' && guard < 3600) {
       api.tick(1 / 60);
       guard++;
+      const m = api.getState().mode;
+      if (m !== lastMode) {
+        lastMode = m;
+        if (phaseFrames[m] == null) phaseFrames[m] = 0;
+      }
+      if (m !== 'play') phaseFrames[m] = (phaseFrames[m] || 0) + 1;
       // Soft-reset is one frame; if we land on play mid-loop, break
       if (api.getState().mode === 'play' && guard > 10) break;
     }
-    out.steps.push({ at: 'after-cinema', frames: guard, ...snap() });
+    out.phaseFrames = phaseFrames;
+    out.cinemaSeconds = +(guard / 60).toFixed(2);
+    out.steps.push({ at: 'after-cinema', frames: guard, seconds: out.cinemaSeconds, ...snap() });
+    check(guard >= 1200, 'stretched cinema should run ~20s+ (got ' + out.cinemaSeconds + 's)');
+    check(guard < 3600, 'cinema should finish before 60s guard');
     check(api.getState().mode === 'play', 'mode should be play after Ronnie cycle');
     check(api.getActivePointerId() == null, 'pointer id still clear after cinema');
     check(api.getState().dragging === false, 'not dragging after cinema');
@@ -161,7 +174,7 @@ async function run() {
     check(api.getState().mode === 'ronnie_intro', 'second Ronnie cycle starts');
     check(api.getActivePointerId() == null, 'pointer cleared on second cinema');
     guard = 0;
-    while (api.getState().mode !== 'play' && guard < 1200) {
+    while (api.getState().mode !== 'play' && guard < 3600) {
       api.tick(1 / 60);
       guard++;
     }
