@@ -10,3 +10,10 @@ farm.html.bak-pre-cinema
 node_modules/
 App_Data/afg_password.txt
 App_Data/afg_password_hash.txt
+App_Data/play_log.sqlite
+App_Data/play_log.sqlite-*
+App_Data/*.sqlite
+App_Data/*.sqlite-wal
+App_Data/*.sqlite-shm
+App_Data/play_log_query_key.txt
+play_log.sqlite

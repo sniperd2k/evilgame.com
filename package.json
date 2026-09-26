@@ -9,7 +9,10 @@
     "test:farm": "node tests/farm-input-lock.test.mjs && node tests/farm-ronnie-cycle.mjs",
     "test:gate": "node tests/run-gate.mjs",
     "test:persist": "node tests/afg-persist.test.mjs",
-    "test:attic": "node tests/attic-edge.test.mjs && node tests/attic-salad-sfx.test.mjs && node tests/attic-endgame.integration.mjs"
+    "test:attic": "node tests/attic-edge.test.mjs && node tests/attic-salad-sfx.test.mjs && node tests/attic-endgame.integration.mjs && node tests/audio-unit.test.mjs",
+    "test:turbo": "node tests/turbo-unit.test.mjs && node tests/turbo-playthrough.mjs",
+    "test:audio": "node tests/audio-unit.test.mjs",
+    "test:playlog": "python3 tests/play-log-unit.py && node tests/play-log-client.test.mjs"
   },
   "devDependencies": {
     "puppeteer-core": "^21.11.0"

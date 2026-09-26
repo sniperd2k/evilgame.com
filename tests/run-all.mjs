@@ -17,13 +17,18 @@ const REQUIRED = [
   'tests/attic-salad-sfx.test.mjs',
   'tests/attic-endgame.integration.mjs',
   'tests/farm-input-lock.test.mjs',
-  'tests/farm-ronnie-cycle.mjs'
+  'tests/farm-ronnie-cycle.mjs',
+  'tests/audio-unit.test.mjs',
+  'tests/turbo-unit.test.mjs',
+  'tests/turbo-playthrough.mjs'
 ];
 
 const OPTIONAL = [
   'tests/afg-gate-client.test.mjs',
   'tests/afg-gate-unit.py',
   'tests/afg-gate-integration.mjs',
+  'tests/play-log-unit.py',
+  'tests/play-log-client.test.mjs',
   // legacy names from harness scaffold
   'tests/afg-gate.test.mjs',
   'tests/afg-gate.integration.mjs'

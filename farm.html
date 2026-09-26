@@ -164,6 +164,9 @@
     <a class="back" href="index.html">&lt;- PROGRAM MENU</a>
     <button type="button" class="reset" id="reset">RESET</button>
   </div>
+<script src="afg/turbo.js"></script>
+<script src="afg/play_log.js"></script>
+<script src="afg/audio.js"></script>
 <script>
 (function () {
   var W = 640, H = 480;
@@ -300,6 +303,15 @@
     if (state.score > profile.highScore) {
       profile.highScore = state.score;
       saveProfile();
+      try {
+        if (window.AfgPlayLog) {
+          AfgPlayLog.score({
+            user: profile.nick,
+            game: 'farm',
+            score: state.score
+          });
+        }
+      } catch (ePl) {}
     }
   }
 
@@ -688,6 +700,15 @@
   }
 
   function resetAll() {
+    try {
+      if (window.AfgPlayLog && state.score > 0 && profile && profile.nick) {
+        AfgPlayLog.score({
+          user: profile.nick,
+          game: 'farm',
+          score: state.score
+        });
+      }
+    } catch (ePl2) {}
     state.level = 1;
     state.catsNeeded = 1;
     state.lastRonnieAt = 0;
@@ -751,6 +772,8 @@
   function restorePlayControl() {
     // Called whenever we re-enter play after cinema / level start.
     releaseInputLock();
+    // Drop mic lock so crow spam during cinema can't softlock post-play SFX (esp. turbo).
+    clearVoicePriority();
     var p = state.player;
     p.hasBroom = false;
     p.stuckT = 0;
@@ -796,11 +819,13 @@
     elFanfare.classList.add('on');
     elFanfare.setAttribute('aria-hidden', 'false');
     if (fanfareTimer) clearTimeout(fanfareTimer);
+    // Under turbo, don't hold wall-clock UI for 3.5s while sim races ahead.
+    var ms = (window.EvilTurbo && EvilTurbo.isOn()) ? 80 : 3500;
     fanfareTimer = setTimeout(function () {
       elFanfare.classList.remove('on');
       elFanfare.setAttribute('aria-hidden', 'true');
       fanfareTimer = null;
-    }, 3500);
+    }, ms);
   }
 
   function levelCleared() {
@@ -811,143 +836,52 @@
     say('LEVEL ' + state.level + '! ' + state.catsNeeded + ' CATS IN THE STORE!');
   }
 
-  // --- Audio ---
-  var audioCtx = null;
-  var audioUnlocked = false;
-  var sfxEls = {};
-  var currentSfx = null;
-  var voicePriority = false;
-
+  // --- Audio (event-driven via EvilAudio; game fires cues, manager schedules) ---
   var MEOW_URLS = ['sfx/meow1.wav', 'sfx/meow2.wav', 'sfx/meow3.wav'];
   var ALL_SFX_URLS = MEOW_URLS.concat(['sfx/cockadoodle.wav']);
 
-  function ensureAudio() {
-    try {
-      var AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return null;
-      if (!audioCtx) audioCtx = new AC();
-      if (audioCtx.state === 'suspended') {
-        try { audioCtx.resume(); } catch (e1) {}
-      }
-      return audioCtx;
-    } catch (err) {
-      return null;
-    }
-  }
+  var audio = window.EvilAudio.create({
+    name: 'farm',
+    urls: ALL_SFX_URLS,
+    priorityTtl: 5.0,
+    turboPriorityTtl: 2.5
+  });
 
-  function getSfxEl(url) {
-    if (!sfxEls[url]) {
-      var a = new Audio();
-      a.preload = 'auto';
-      a.src = url;
-      try { a.setAttribute('playsinline', ''); a.playsInline = true; } catch (e1) {}
-      try { a.load(); } catch (e2) {}
-      sfxEls[url] = a;
-    }
-    return sfxEls[url];
-  }
+  audio.register('meow', { pick: MEOW_URLS, vol: 0.9, overlap: true });
+  audio.register('crow', {
+    url: 'sfx/cockadoodle.wav',
+    priority: true,
+    turboSkipIfBusy: true,
+    turboHoldTtl: true
+  });
 
-  function unlockAudio() {
-    var ctx = ensureAudio();
-    if (ctx) {
-      try {
-        var o = ctx.createOscillator();
-        var g = ctx.createGain();
-        g.gain.value = 0.0001;
-        o.connect(g);
-        g.connect(ctx.destination);
-        o.start(0);
-        o.stop(ctx.currentTime + 0.04);
-      } catch (e1) {}
-      try { ctx.resume(); } catch (e2) {}
-    }
-    var i, a, p;
-    for (i = 0; i < ALL_SFX_URLS.length; i++) {
-      a = getSfxEl(ALL_SFX_URLS[i]);
-      try {
-        a.muted = true;
-        a.volume = 0;
-        p = a.play();
-        if (p && typeof p.then === 'function') {
-          p.then(function (el) {
-            return function () {
-              try { el.pause(); el.currentTime = 0; } catch (e3) {}
-              el.muted = false;
-              el.volume = 1;
-            };
-          }(a)).catch(function (el) {
-            return function () { el.muted = false; el.volume = 1; };
-          }(a));
-        } else {
-          try { a.pause(); a.currentTime = 0; } catch (e4) {}
-          a.muted = false;
-          a.volume = 1;
-        }
-      } catch (e5) {
-        a.muted = false;
-        a.volume = 1;
-      }
-    }
-    audioUnlocked = true;
-  }
+  function unlockAudio() { audio.unlock(); }
+  function clearVoicePriority() { audio.clearPriority(); }
+  function tickVoicePriority(dt) { audio.tick(dt); }
+  function stopCurrentSfx() { audio.stopCurrent(); }
+  function getSfxEl(url) { return audio.getSfxEl(url); }
+  function playHtmlSfx(url, vol, opts) { var r = audio.play(url, vol, opts || {}); syncLastSfx(); return r; }
 
-  function stopCurrentSfx() {
-    if (!currentSfx) return;
-    try { currentSfx.pause(); } catch (e1) {}
-    try { currentSfx.currentTime = 0; } catch (e2) {}
-    currentSfx = null;
-  }
-
-  function clearVoicePriority() {
-    voicePriority = false;
-  }
-
-  function playHtmlSfx(url, vol, opts) {
-    try {
-      opts = opts || {};
-      var priority = !!opts.priority;
-      if (!audioUnlocked) unlockAudio();
-      if (voicePriority && !priority) return;
-      // Meows can overlap a little - only interrupt if priority or same pool quiet
-      if (priority || !opts.overlap) stopCurrentSfx();
-      if (priority) voicePriority = true;
-      var a = getSfxEl(url);
-      // For overlapping meows, clone briefly if already playing
-      if (opts.overlap && !a.paused && a.currentTime > 0) {
-        try {
-          var clone = a.cloneNode();
-          clone.volume = vol == null ? 0.85 : vol;
-          clone.play().catch(function () {});
-          return;
-        } catch (e0) {}
-      }
-      a.muted = false;
-      a.volume = vol == null ? 1 : vol;
-      try { a.currentTime = 0; } catch (e1) {}
-      a.onended = function () {
-        if (currentSfx === a) currentSfx = null;
-        if (priority) clearVoicePriority();
-      };
-      if (!opts.overlap) currentSfx = a;
-      var p = a.play();
-      if (p && typeof p.catch === 'function') {
-        p.catch(function () {
-          if (currentSfx === a) currentSfx = null;
-          if (priority) clearVoicePriority();
-        });
-      }
-    } catch (err) {
-      if (opts && opts.priority) clearVoicePriority();
-    }
+  var lastSfx = audio.getLastSfx();
+  function syncLastSfx() {
+    var L = audio.getLastSfx();
+    lastSfx.url = L.url;
+    lastSfx.priority = L.priority;
+    lastSfx.at = L.at;
   }
 
   function playMeow() {
-    var url = MEOW_URLS[Math.floor(Math.random() * MEOW_URLS.length)];
-    playHtmlSfx(url, 0.9, { overlap: true });
+    // Room for play_log beside this fire().
+    var r = audio.fire('meow');
+    syncLastSfx();
+    return r;
   }
 
   function playCockadoodle() {
-    playHtmlSfx('sfx/cockadoodle.wav', 1, { priority: true });
+    // Turbo: one crow owns the mic; skip re-triggers (manager turboSkipIfBusy).
+    var r = audio.fire('crow');
+    syncLastSfx();
+    return r;
   }
 
   var sfxWarm = false;
@@ -1561,6 +1495,7 @@
   }
 
   function update(dt) {
+    tickVoicePriority(dt);
     applyWasdMove();
     if (state.mode === 'play') {
       updateCats(dt);
@@ -1982,13 +1917,34 @@
     if (!ts) ts = performance.now();
     var dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 1 / 60;
     lastTs = ts;
-    state._dt = dt;
-    update(dt);
+    var turbo = window.EvilTurbo ? EvilTurbo.get() : { on: false, rate: 1 };
+    if (turbo.on && turbo.rate > 1) {
+      var steps = EvilTurbo.stepsPerFrame();
+      var stepDt = EvilTurbo.stepDt();
+      var s;
+      for (s = 0; s < steps; s++) {
+        state._dt = stepDt;
+        update(stepDt);
+      }
+    } else {
+      state._dt = dt;
+      update(dt);
+    }
     draw();
     requestAnimationFrame(frame);
   }
 
   buildShelves();
+  try {
+    if (window.AfgPlayLog) {
+      AfgPlayLog.bindSession({
+        game: 'farm',
+        getUser: function () { return profile && profile.nick; },
+        getScore: function () { return state && state.score; }
+      });
+    }
+  } catch (ePlS) {}
+
   resetAll();
   requestAnimationFrame(frame);
 
@@ -1998,6 +1954,15 @@
     getKeys: function () { return keys; },
     setKey: function (k, v) { if (k in keys) keys[k] = !!v; },
     tick: function (dt) { state._dt = dt || 1 / 60; update(dt || 1 / 60); },
+    tickMany: function (seconds, dt) {
+      dt = dt || 1 / 60;
+      var n = Math.ceil((seconds || 0) / dt);
+      var i;
+      for (i = 0; i < n; i++) {
+        state._dt = dt;
+        update(dt);
+      }
+    },
     update: update,
     applyWasdMove: applyWasdMove,
     clampPlayer: clampPlayer,
@@ -2012,6 +1977,10 @@
     freeSpotNear: freeSpotNear,
     getActivePointerId: function () { return activePointerId; },
     setActivePointerId: function (id) { activePointerId = id; },
+    getTurbo: function () { return window.EvilTurbo ? EvilTurbo.get() : { on: false, rate: 1 }; },
+    setTurbo: function (r) { return window.EvilTurbo ? EvilTurbo.set(r) : null; },
+    getLastSfx: function () { syncLastSfx(); return { url: lastSfx.url, priority: lastSfx.priority, at: lastSfx.at }; },
+    getVoicePriority: function () { return audio.hasVoicePriority(); },
     W: W,
     H: H
   };

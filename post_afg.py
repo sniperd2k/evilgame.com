@@ -53,6 +53,25 @@ def read_key():
 # Cap CGI body so a hostile client cannot fill memory via CONTENT_LENGTH.
 MAX_BODY = 4096
 
+# Nick for Slack mrkdwn: strip control + Slack specials so clients cannot inject formatting.
+_NICK_BAD = str.maketrans({c: "" for c in "*_`~<>|\r\n\t"})
+
+
+def sanitize_nick(raw):
+    s = str(raw or "").strip()[:24]
+    if not s:
+        return ""
+    s = s.translate(_NICK_BAD)
+    # Keep printable-ish ascii (no control chars).
+    out = "".join(ch for ch in s if 32 <= ord(ch) < 127)
+    return out.strip()
+
+
+def content_type_is_json(header):
+    if not header:
+        return False
+    return header.split(";")[0].strip().lower() == "application/json"
+
 
 def read_body():
     try:
@@ -76,6 +95,7 @@ def respond(code, obj):
     body = json.dumps(obj).encode("utf-8")
     sys.stdout.write("Status: %d\r\n" % code)
     sys.stdout.write("Content-Type: application/json\r\n")
+    sys.stdout.write("X-Content-Type-Options: nosniff\r\n")
     sys.stdout.write("Access-Control-Allow-Origin: *\r\n")
     sys.stdout.write("Content-Length: %d\r\n\r\n" % len(body))
     sys.stdout.flush()
@@ -95,11 +115,16 @@ def main():
         respond(405, {"ok": False, "error": "POST only"})
         return
 
+    ctype = os.environ.get("CONTENT_TYPE") or os.environ.get("HTTP_CONTENT_TYPE") or ""
+    if not content_type_is_json(ctype):
+        respond(415, {"ok": False, "error": "application/json required"})
+        return
+
     data = read_body()
     if data is None:
         respond(413, {"ok": False, "error": "payload too large"})
         return
-    nick = str(data.get("nick") or "").strip()[:24]
+    nick = sanitize_nick(data.get("nick"))
     try:
         score = int(data.get("score"))
     except Exception:

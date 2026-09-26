@@ -27,14 +27,34 @@ def read_body():
         return {}
 
 
+# Whitelist only — never reflect arbitrary Origin when credentials=true.
+ALLOWED_ORIGINS = frozenset({
+    "http://evilgame.com",
+    "https://evilgame.com",
+    "http://www.evilgame.com",
+    "https://www.evilgame.com",
+    "http://localhost",
+    "http://127.0.0.1",
+})
+
+
+def cors_origin():
+    origin = (os.environ.get("HTTP_ORIGIN") or "").strip()
+    if origin in ALLOWED_ORIGINS:
+        return origin
+    return ""
+
+
 def respond(code, obj, extra_headers=None):
     body = json.dumps(obj).encode("utf-8")
     sys.stdout.write("Status: %d\r\n" % code)
     sys.stdout.write("Content-Type: application/json\r\n")
-    sys.stdout.write("Access-Control-Allow-Origin: %s\r\n" % (
-        os.environ.get("HTTP_ORIGIN") or "*"
-    ))
-    sys.stdout.write("Access-Control-Allow-Credentials: true\r\n")
+    sys.stdout.write("X-Content-Type-Options: nosniff\r\n")
+    origin = cors_origin()
+    if origin:
+        sys.stdout.write("Access-Control-Allow-Origin: %s\r\n" % origin)
+        sys.stdout.write("Access-Control-Allow-Credentials: true\r\n")
+        sys.stdout.write("Vary: Origin\r\n")
     sys.stdout.write("Cache-Control: no-store\r\n")
     if extra_headers:
         for h in extra_headers:
@@ -47,11 +67,12 @@ def respond(code, obj, extra_headers=None):
 def main():
     method = (os.environ.get("REQUEST_METHOD") or "GET").upper()
     if method == "OPTIONS":
+        origin = cors_origin()
         sys.stdout.write("Status: 204\r\n")
-        sys.stdout.write("Access-Control-Allow-Origin: %s\r\n" % (
-            os.environ.get("HTTP_ORIGIN") or "*"
-        ))
-        sys.stdout.write("Access-Control-Allow-Credentials: true\r\n")
+        if origin:
+            sys.stdout.write("Access-Control-Allow-Origin: %s\r\n" % origin)
+            sys.stdout.write("Access-Control-Allow-Credentials: true\r\n")
+            sys.stdout.write("Vary: Origin\r\n")
         sys.stdout.write("Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n")
         sys.stdout.write("Access-Control-Allow-Headers: Content-Type\r\n\r\n")
         return
@@ -70,6 +91,12 @@ def main():
 
     if method != "POST":
         respond(405, {"ok": False, "error": "POST or GET only"})
+        return
+
+    ctype = os.environ.get("CONTENT_TYPE") or os.environ.get("HTTP_CONTENT_TYPE") or ""
+    main = ctype.split(";")[0].strip().lower()
+    if main and main != "application/json":
+        respond(415, {"ok": False, "error": "application/json required"})
         return
 
     data = read_body()

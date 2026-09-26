@@ -123,6 +123,27 @@
         if (res.ok) {
           setMsg('UNLOCKED');
           play(opts.successUrl || 'sfx/stab_painting.wav');
+          // Server play log (best-effort; never blocks unlock UX).
+          try {
+            if (root.AfgPlayLog && typeof root.AfgPlayLog.log === 'function') {
+              var logUser = '';
+              if (opts.playLogUser) logUser = String(opts.playLogUser);
+              if (!logUser) {
+                try {
+                  var rawProf = localStorage.getItem('evilgame.attic.v1') ||
+                    localStorage.getItem('evilgame.farm.v1');
+                  if (rawProf) {
+                    var po = JSON.parse(rawProf);
+                    if (po && po.nick) logUser = String(po.nick);
+                  }
+                } catch (eNick) {}
+              }
+              root.AfgPlayLog.log({
+                action: 'visit',
+                user: logUser || 'afg'
+              });
+            }
+          } catch (eLog) {}
           var href = opts.targetHref || 'attic.html';
           setTimeout(function () {
             if (typeof opts.onSuccess === 'function') opts.onSuccess(href);
@@ -154,11 +175,58 @@
     return el;
   }
 
+
+  /**
+   * Expire the AFG unlock cookie client-side (cookie is not HttpOnly).
+   * Returns the assignment string (useful for tests).
+   */
+  function clearUnlockCookie() {
+    var expire = COOKIE_NAME + '=; Path=/; Max-Age=0; SameSite=Lax';
+    try {
+      if (typeof document !== 'undefined') {
+        document.cookie = expire;
+        // Some browsers keep legacy host-only cookies; clear those too.
+        document.cookie = COOKIE_NAME + '=; Max-Age=0; SameSite=Lax';
+      }
+    } catch (e1) {}
+    return expire;
+  }
+
+  /**
+   * Wipe AFG unlock + all evilgame.* local/session storage (profiles, highs, etc.).
+   */
+  function wipeUserData() {
+    clearUnlockCookie();
+    function wipeStore(store) {
+      if (!store) return;
+      var keys = [];
+      var i, k;
+      try {
+        for (i = 0; i < store.length; i++) {
+          k = store.key(i);
+          if (k && k.indexOf('evilgame.') === 0) keys.push(k);
+        }
+        for (i = 0; i < keys.length; i++) store.removeItem(keys[i]);
+      } catch (e2) {}
+    }
+    try { wipeStore(typeof localStorage !== 'undefined' ? localStorage : null); } catch (e3) {}
+    try { wipeStore(typeof sessionStorage !== 'undefined' ? sessionStorage : null); } catch (e4) {}
+    // Known keys even if prefix scan missed them
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('evilgame.attic.v1');
+        localStorage.removeItem('evilgame.farm.v1');
+      }
+    } catch (e5) {}
+  }
+
   var Gate = {
     CGI: CGI,
     COOKIE_NAME: COOKIE_NAME,
     normalizePassword: normalizePassword,
     getCookie: getCookie,
+    clearUnlockCookie: clearUnlockCookie,
+    wipeUserData: wipeUserData,
     checkUnlocked: checkUnlocked,
     submitPassword: submitPassword,
     createOverlay: createOverlay

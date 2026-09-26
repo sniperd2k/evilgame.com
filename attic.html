@@ -243,6 +243,7 @@
   </div>
 <style id="afgGateBootCss">html.afg-locked body > *:not(.afg-gate){visibility:hidden!important}</style>
 <script src="afg/gate.js"></script>
+<script src="afg/play_log.js"></script>
 <script>
 (function () {
   // Soft AFG gate — direct attic.html visits need unlock cookie from check_afg.py.
@@ -280,6 +281,8 @@
 </script>
 <script src="afg/persist.js"></script>
 <script src="afg/attic-edge.js"></script>
+<script src="afg/turbo.js"></script>
+<script src="afg/audio.js"></script>
 <script>
 (function () {
   var W = 640, H = 480;
@@ -397,6 +400,15 @@
   function bumpHighIfNeeded() {
     if (state.score > profile.highScore) {
       profile.highScore = afgStore.setHighScore(state.score);
+      try {
+        if (window.AfgPlayLog) {
+          AfgPlayLog.score({
+            user: profile.nick,
+            game: 'attic',
+            score: state.score
+          });
+        }
+      } catch (ePl) {}
     }
   }
 
@@ -515,6 +527,15 @@
     if (state.score > 0) {
       var recorded = afgStore.recordScore(state.score);
       profile = recorded.profile;
+      try {
+        if (window.AfgPlayLog) {
+          AfgPlayLog.score({
+            user: profile.nick,
+            game: 'attic',
+            score: state.score
+          });
+        }
+      } catch (ePl2) {}
     }
     state.score = 0;
     state.room = 1;
@@ -722,14 +743,7 @@
     hud();
   }
 
-  var audioCtx = null;
-  var audioUnlocked = false;
-  var sfxEls = {};
-  var currentSfx = null;
-  // Belchertown voice owns the mic — other SFX cannot cut it while this is true.
-  var voicePriority = false;
-
-  // Five handmade wet slurps — pick one at random on each nug.
+  // --- Audio (event-driven via EvilAudio; game fires cues, manager schedules) ---
   var SLURP_URLS = [
     'sfx/slurp1.wav',
     'sfx/slurp2.wav',
@@ -745,141 +759,56 @@
     'sfx/burp.wav'
   ]);
 
-  function ensureAudio() {
-    try {
-      var AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return null;
-      if (!audioCtx) audioCtx = new AC();
-      if (audioCtx.state === 'suspended') {
-        try { audioCtx.resume(); } catch (e1) {}
-      }
-      return audioCtx;
-    } catch (err) {
-      return null;
-    }
-  }
+  var audio = window.EvilAudio.create({
+    name: 'attic',
+    urls: ALL_SFX_URLS,
+    priorityTtl: 6.0,
+    turboPriorityTtl: 2.8
+  });
 
-  function getSfxEl(url) {
-    if (!sfxEls[url]) {
-      var a = new Audio();
-      a.preload = 'auto';
-      a.src = url;
-      try { a.setAttribute('playsinline', ''); a.playsInline = true; } catch (e1) {}
-      try { a.load(); } catch (e2) {}
-      sfxEls[url] = a;
-    }
-    return sfxEls[url];
-  }
+  audio.register('slurp', { pick: SLURP_URLS, vol: 0.95 });
+  audio.register('burp', { url: 'sfx/burp.wav', priority: true });
+  audio.register('door', { url: 'sfx/door-open.wav', vol: 1 });
+  audio.register('salad', {
+    url: (window.AtticEdge && AtticEdge.saladShoutUrl) ? AtticEdge.saladShoutUrl() : 'sfx/dont-like-salad.wav',
+    priority: true
+  });
+  audio.register('belchertown', { url: 'sfx/belchertown.wav', priority: true });
+  audio.register('nice', { url: 'sfx/nice.wav', priority: true });
 
-  // iOS (Safari + Chrome) only unlocks audio inside a real user gesture.
-  // Menu works because it beeps on tap; we do the same here on first touch.
-  function unlockAudio() {
-    var ctx = ensureAudio();
-    if (ctx) {
-      try {
-        var o = ctx.createOscillator();
-        var g = ctx.createGain();
-        g.gain.value = 0.0001;
-        o.connect(g);
-        g.connect(ctx.destination);
-        o.start(0);
-        o.stop(ctx.currentTime + 0.04);
-      } catch (e1) {}
-      try { ctx.resume(); } catch (e2) {}
-    }
-    var i, a, p;
-    for (i = 0; i < ALL_SFX_URLS.length; i++) {
-      a = getSfxEl(ALL_SFX_URLS[i]);
-      try {
-        a.muted = true;
-        a.volume = 0;
-        p = a.play();
-        if (p && typeof p.then === 'function') {
-          p.then(function (el) {
-            return function () {
-              try { el.pause(); el.currentTime = 0; } catch (e3) {}
-              el.muted = false;
-              el.volume = 1;
-            };
-          }(a)).catch(function (el) {
-            return function () { el.muted = false; el.volume = 1; };
-          }(a));
-        } else {
-          try { a.pause(); a.currentTime = 0; } catch (e4) {}
-          a.muted = false;
-          a.volume = 1;
-        }
-      } catch (e5) {
-        a.muted = false;
-        a.volume = 1;
-      }
-    }
-    audioUnlocked = true;
-  }
+  // Compatibility surface for existing hooks / tests
+  function unlockAudio() { audio.unlock(); }
+  function clearVoicePriority() { audio.clearPriority(); }
+  function tickVoicePriority(dt) { audio.tick(dt); }
+  function stopCurrentSfx() { audio.stopCurrent(); }
+  function getSfxEl(url) { return audio.getSfxEl(url); }
+  function playHtmlSfx(url, vol, opts) { var r = audio.play(url, vol, opts || {}); syncLastSfx(); return r; }
 
-  function stopCurrentSfx() {
-    if (!currentSfx) return;
-    try { currentSfx.pause(); } catch (e1) {}
-    try { currentSfx.currentTime = 0; } catch (e2) {}
-    currentSfx = null;
+  Object.defineProperty(window, '__atticAudioLastSfxProxy', { value: true, configurable: true });
+  // lastSfx + voicePriority mirrors for __AFG_ATTIC__ getters (live from manager)
+  var lastSfx = audio.getLastSfx();
+  function syncLastSfx() {
+    var L = audio.getLastSfx();
+    lastSfx.url = L.url;
+    lastSfx.priority = L.priority;
+    lastSfx.at = L.at;
   }
-
-  function clearVoicePriority() {
-    voicePriority = false;
-  }
-
-  // opts.priority: Belchertown voice - cuts everything, and nothing else may cut it.
-  // Reuse pooled Audio elements (no per-play allocation) for iOS + perf.
-  var lastSfx = { url: null, priority: false, at: 0 };
-
-  function playHtmlSfx(url, vol, opts) {
-    try {
-      opts = opts || {};
-      var priority = !!opts.priority;
-      if (!audioUnlocked) unlockAudio();
-      // While Belchertown owns the mic, lesser SFX are ignored.
-      if (voicePriority && !priority) return;
-      lastSfx.url = url;
-      lastSfx.priority = priority;
-      lastSfx.at = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-      stopCurrentSfx();
-      try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e0) {}
-      if (priority) voicePriority = true;
-      else voicePriority = false;
-      var a = getSfxEl(url);
-      a.muted = false;
-      a.volume = vol == null ? 1 : vol;
-      try { a.currentTime = 0; } catch (e1) {}
-      a.onended = function () {
-        if (currentSfx === a) currentSfx = null;
-        if (priority) clearVoicePriority();
-      };
-      currentSfx = a;
-      var p = a.play();
-      if (p && typeof p.catch === 'function') {
-        p.catch(function () {
-          if (currentSfx === a) currentSfx = null;
-          if (priority) clearVoicePriority();
-        });
-      }
-    } catch (err) {
-      if (opts && opts.priority) clearVoicePriority();
-    }
-  }
+  function voicePriority() { return audio.hasVoicePriority(); }
 
   function playSlurp() {
-    var url = SLURP_URLS[Math.floor(Math.random() * SLURP_URLS.length)];
-    playHtmlSfx(url, 0.95);
+    // Room for play_log: audio.fire('slurp') is the single emit point.
+    var r = audio.fire('slurp');
+    syncLastSfx();
+    return r;
   }
 
-  function loadBurp() {
-    getSfxEl('sfx/burp.wav');
-  }
+  function loadBurp() { getSfxEl('sfx/burp.wav'); }
 
   function playBurp() {
     try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e1) {}
-    // Huge ripping burp owns the mic briefly.
-    playHtmlSfx('sfx/burp.wav', 1, { priority: true });
+    var r = audio.fire('burp');
+    syncLastSfx();
+    return r;
   }
 
   // Each nug: +1% cumulative chance of burp (1%, 2%, …) until it fires, then reset.
@@ -895,49 +824,45 @@
 
   function playDoorOpen() {
     try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e1) {}
-    playHtmlSfx('sfx/door-open.wav', 1);
+    var r = audio.fire('door');
+    syncLastSfx();
+    return r;
   }
 
   function loadSlurps() {
-    // Preload HTMLAudio elements (iOS-friendly). Kept for callers.
     var i;
     for (i = 0; i < SLURP_URLS.length; i++) getSfxEl(SLURP_URLS[i]);
   }
 
-  function loadDoorOpen() {
-    getSfxEl('sfx/door-open.wav');
-  }
-
-  function loadSaladLine() {
-    getSfxEl('sfx/dont-like-salad.wav');
-  }
+  function loadDoorOpen() { getSfxEl('sfx/door-open.wav'); }
+  function loadSaladLine() { getSfxEl('sfx/dont-like-salad.wav'); }
 
   function playDontLikeSalad() {
     try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e1) {}
     // Must be priority: Belchertown voice otherwise blocks this mid-zoom shout.
     var url = (window.AtticEdge && AtticEdge.saladShoutUrl) ? AtticEdge.saladShoutUrl() : 'sfx/dont-like-salad.wav';
     var opts = (window.AtticEdge && AtticEdge.saladShoutSfxOpts) ? AtticEdge.saladShoutSfxOpts() : { priority: true };
-    playHtmlSfx(url, 1, opts);
+    var r = audio.fire('salad', { url: url, priority: opts.priority !== false });
+    syncLastSfx();
+    return r;
   }
 
-  function loadBelchertownLine() {
-    getSfxEl('sfx/belchertown.wav');
-  }
+  function loadBelchertownLine() { getSfxEl('sfx/belchertown.wav'); }
 
   function playBelchertownLine() {
     try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e1) {}
-    // Always owns the mic — slurps/doors/salad cannot cut this line.
-    playHtmlSfx('sfx/belchertown.wav', 1, { priority: true });
+    var r = audio.fire('belchertown');
+    syncLastSfx();
+    return r;
   }
 
-  function loadNiceLine() {
-    getSfxEl('sfx/nice.wav');
-  }
+  function loadNiceLine() { getSfxEl('sfx/nice.wav'); }
 
   function playNiceLine() {
     try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e1) {}
-    // Batman-66 stinger — owns the mic for the blast.
-    playHtmlSfx('sfx/nice.wav', 1, { priority: true });
+    var r = audio.fire('nice');
+    syncLastSfx();
+    return r;
   }
 
   var nicePowTimer = null;
@@ -1712,6 +1637,7 @@
   }
 
   function update() {
+    tickVoicePriority(state._dt || 1 / 60);
     if (state.salad > 0) state.salad--;
 
     applyWasdMove();
@@ -1742,7 +1668,8 @@
         state.player.y += (H / 2 - state.player.y) * (0.04 + t * 0.08);
         var maxInset = Math.min(W, H) / 2 - 8;
         if (state.saladInset > maxInset) state.saladInset = maxInset;
-        if (t >= 1) {
+        // Finish when time elapses OR crush hits center (float-safe under turbo ticks).
+        if (t >= 0.999 || state.saladInset >= maxInset - 0.5) {
           finishBelchertownSalad();
         }
       }
@@ -1782,13 +1709,7 @@
   }
 
   var lastTs = 0;
-  function frame(ts) {
-    if (!ts) ts = performance.now();
-    var dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 1 / 60;
-    lastTs = ts;
-    // Expose dt for salad crush timing (avoids 60fps assumption drift).
-    state._dt = dt;
-    update();
+  function drawFrame() {
     if (state.scene === 'belch') {
       drawBelchRoom();
       drawPlayer();
@@ -1801,6 +1722,26 @@
       drawPlayer();
       drawSaladBurst();
     }
+  }
+  function frame(ts) {
+    if (!ts) ts = performance.now();
+    var dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 1 / 60;
+    lastTs = ts;
+    var turbo = window.EvilTurbo ? EvilTurbo.get() : { on: false, rate: 1 };
+    if (turbo.on && turbo.rate > 1) {
+      // Hundreds× via many fixed 1/60 steps (stable physics / salad timing).
+      var steps = EvilTurbo.stepsPerFrame();
+      var stepDt = EvilTurbo.stepDt();
+      var s;
+      for (s = 0; s < steps; s++) {
+        state._dt = stepDt;
+        update();
+      }
+    } else {
+      state._dt = dt;
+      update();
+    }
+    drawFrame();
     requestAnimationFrame(frame);
   }
 
@@ -1865,16 +1806,57 @@
         msg: elMsg.textContent
       };
     },
-    getLastSfx: function () { return { url: lastSfx.url, priority: lastSfx.priority, at: lastSfx.at }; },
+    getLastSfx: function () { syncLastSfx(); return { url: lastSfx.url, priority: lastSfx.priority, at: lastSfx.at }; },
     playDontLikeSalad: playDontLikeSalad,
     bumpHighIfNeeded: bumpHighIfNeeded,
     resetAll: resetAll,
     hud: hud,
     saveProfile: saveProfile,
     exportSnapshot: function () { return afgStore.exportSnapshot(); },
+    tick: function (dt) {
+      state._dt = dt || 1 / 60;
+      update();
+    },
+    tickMany: function (seconds, dt) {
+      dt = dt || 1 / 60;
+      var n = Math.ceil((seconds || 0) / dt);
+      var i;
+      for (i = 0; i < n; i++) {
+        state._dt = dt;
+        update();
+      }
+    },
+    getTurbo: function () { return window.EvilTurbo ? EvilTurbo.get() : { on: false, rate: 1 }; },
+    setTurbo: function (r) { return window.EvilTurbo ? EvilTurbo.set(r) : null; },
+    getVoicePriority: function () { return audio.hasVoicePriority(); },
+    eatNugAt: function (i) {
+      var n = state.nuggets[i];
+      if (n && !n.eaten) eatNug(n);
+      return !!n;
+    },
+    forceDoorOpen: function () { state.doorOpen = true; state.doorSide = state.doorSide || 'right'; },
+    forceTooBigBelch: function () {
+      state.nugsSinceShrink = 15;
+      state.tooBig = true;
+      state.doorOpen = true;
+      state.belchertown = true;
+    },
+    enterBelchertownRoom: enterBelchertownRoom,
+    finishBelchertownSalad: finishBelchertownSalad,
     W: W,
     H: H
   };
+
+  // Server play-log session (pagehide / visibility).
+  try {
+    if (window.AfgPlayLog) {
+      AfgPlayLog.bindSession({
+        game: 'attic',
+        getUser: function () { return profile && profile.nick; },
+        getScore: function () { return state && state.score; }
+      });
+    }
+  } catch (ePlS) {}
 
   resetAll();
   requestAnimationFrame(frame);
