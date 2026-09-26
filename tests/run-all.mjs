@@ -13,6 +13,9 @@ const ROOT = path.resolve(__dirname, '..');
 const REQUIRED = [
   'tests/afg-persist.test.mjs',
   'tests/afg-attic-persist.integration.mjs',
+  'tests/attic-edge.test.mjs',
+  'tests/attic-salad-sfx.test.mjs',
+  'tests/attic-endgame.integration.mjs',
   'tests/farm-input-lock.test.mjs',
   'tests/farm-ronnie-cycle.mjs'
 ];

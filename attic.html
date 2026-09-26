@@ -279,6 +279,7 @@
 })();
 </script>
 <script src="afg/persist.js"></script>
+<script src="afg/attic-edge.js"></script>
 <script>
 (function () {
   var W = 640, H = 480;
@@ -376,7 +377,8 @@
     saladClosing: false,
     saladCloseT: 0,
     saladShouted: false,
-    burpChance: 0
+    burpChance: 0,
+    bounceT: 0
   };
 
   function say(text) {
@@ -533,6 +535,7 @@
     state.saladCloseT = 0;
     state.saladShouted = false;
     state.burpChance = 0;
+    state.bounceT = 0;
     state.doorSide = 'right';
     state.player.x = W / 2;
     state.player.y = H / 2;
@@ -615,18 +618,26 @@
     state.score -= 5;
     if (state.score < 0) state.score = 0;
     hud();
-    playSlurp();
     var left = belchItemsLeft();
     if (left <= 0) {
+      // End-game salad zoom: skip slurp so the shout owns the mic.
+      var edgeApi = window.AtticEdge;
+      var patch = edgeApi
+        ? edgeApi.onLastBelchItemEaten({ saladShouted: state.saladShouted })
+        : { saladClosing: true, saladCloseT: 0, saladShouted: true, shouldPlaySaladShout: !state.saladShouted };
       state.saladClosing = true;
-      state.saladCloseT = 0;
-      // Shout while it collapses — not after.
-      if (!state.saladShouted) {
+      state.saladCloseT = patch.saladCloseT || 0;
+      state.edgeLatch = false;
+      state.edgeGrace = 0;
+      if (patch.shouldPlaySaladShout) {
         state.saladShouted = true;
         say("I don't even like salad");
         playDontLikeSalad();
+      } else {
+        state.saladShouted = true;
       }
     } else {
+      playSlurp();
       say((it.kind === 'chopsticks' ? 'CHOPSTICKS' : 'FORTUNE COOKIE') + ' -5. ' + left + ' LEFT.');
     }
   }
@@ -640,6 +651,7 @@
     state.player.y = H / 2;
     state.recenterDrag = true;
     state.edgeGrace = 0;
+    state.bounceT = 0;
     state.saladInset = 34;
     state.saladClosing = false;
     state.saladCloseT = 0;
@@ -659,6 +671,8 @@
     state.room = 1;
     state.scene = 'attic';
     state.edgeLatch = false;
+    state.bounceT = 0;
+    state.edgeGrace = 0;
     state.recenterDrag = false;
     state.saladClosing = false;
     state.saladCloseT = 0;
@@ -816,6 +830,8 @@
 
   // opts.priority: Belchertown voice - cuts everything, and nothing else may cut it.
   // Reuse pooled Audio elements (no per-play allocation) for iOS + perf.
+  var lastSfx = { url: null, priority: false, at: 0 };
+
   function playHtmlSfx(url, vol, opts) {
     try {
       opts = opts || {};
@@ -823,6 +839,9 @@
       if (!audioUnlocked) unlockAudio();
       // While Belchertown owns the mic, lesser SFX are ignored.
       if (voicePriority && !priority) return;
+      lastSfx.url = url;
+      lastSfx.priority = priority;
+      lastSfx.at = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
       stopCurrentSfx();
       try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e0) {}
       if (priority) voicePriority = true;
@@ -895,7 +914,10 @@
 
   function playDontLikeSalad() {
     try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e1) {}
-    playHtmlSfx('sfx/dont-like-salad.wav', 1);
+    // Must be priority: Belchertown voice otherwise blocks this mid-zoom shout.
+    var url = (window.AtticEdge && AtticEdge.saladShoutUrl) ? AtticEdge.saladShoutUrl() : 'sfx/dont-like-salad.wav';
+    var opts = (window.AtticEdge && AtticEdge.saladShoutSfxOpts) ? AtticEdge.saladShoutSfxOpts() : { priority: true };
+    playHtmlSfx(url, 1, opts);
   }
 
   function loadBelchertownLine() {
@@ -1467,24 +1489,40 @@
   function drawPlayer() {
     var p = state.player;
     var s = state.size;
+    // Silly comedic wobble after an edge bonk (visual only).
+    var ox = 0, oy = 0, rot = 0;
+    if (state.bounceT > 0) {
+      var bt = state.bounceT;
+      ox = Math.sin(bt * 58) * 9 * bt;
+      oy = Math.cos(bt * 47) * 6 * bt;
+      rot = Math.sin(bt * 70) * 0.18 * bt;
+    }
+    var px = p.x + ox;
+    var py = p.y + oy;
     var bodyH = 28 * s;
     var bodyW = 14 * s;
-    var headY = p.y - bodyH * 0.55;
+    var headY = py - bodyH * 0.55;
+    ctx.save();
+    if (rot) {
+      ctx.translate(px, py);
+      ctx.rotate(rot);
+      ctx.translate(-px, -py);
+    }
     ctx.fillStyle = state.salad > 0 ? '#8fbf6a' : '#e8b4c8';
     ctx.beginPath();
-    ctx.ellipse(p.x, p.y - bodyH * 0.15, bodyW * 0.55, bodyH * 0.55, 0, 0, Math.PI * 2);
+    ctx.ellipse(px, py - bodyH * 0.15, bodyW * 0.55, bodyH * 0.55, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(p.x, headY, bodyW * 0.65, bodyW * 0.7, 0, 0, Math.PI * 2);
+    ctx.ellipse(px, headY, bodyW * 0.65, bodyW * 0.7, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(p.x - bodyW * 0.45, p.y + bodyH * 0.25, bodyW * 0.5, bodyW * 0.4, 0, 0, Math.PI * 2);
-    ctx.ellipse(p.x + bodyW * 0.45, p.y + bodyH * 0.25, bodyW * 0.5, bodyW * 0.4, 0, 0, Math.PI * 2);
+    ctx.ellipse(px - bodyW * 0.45, py + bodyH * 0.25, bodyW * 0.5, bodyW * 0.4, 0, 0, Math.PI * 2);
+    ctx.ellipse(px + bodyW * 0.45, py + bodyH * 0.25, bodyW * 0.5, bodyW * 0.4, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#1a0610';
     ctx.beginPath();
-    ctx.arc(p.x - 3 * s, headY - bodyW * 0.08, Math.max(1.2, 1.5 * s), 0, Math.PI * 2);
-    ctx.arc(p.x + 3 * s, headY - bodyW * 0.08, Math.max(1.2, 1.5 * s), 0, Math.PI * 2);
+    ctx.arc(px - 3 * s, headY - bodyW * 0.08, Math.max(1.2, 1.5 * s), 0, Math.PI * 2);
+    ctx.arc(px + 3 * s, headY - bodyW * 0.08, Math.max(1.2, 1.5 * s), 0, Math.PI * 2);
     ctx.fill();
 
     // Mouth: toothy grin that grows with nugs; max frown in Belchertown.
@@ -1497,7 +1535,7 @@
       ctx.lineWidth = Math.max(2, 1.8 * s);
       ctx.beginPath();
       var frownR = Math.max(4, 7 * s);
-      ctx.arc(p.x, mouthY + frownR * 0.7, frownR, Math.PI * 1.15, Math.PI * 1.85, false);
+      ctx.arc(px, mouthY + frownR * 0.7, frownR, Math.PI * 1.15, Math.PI * 1.85, false);
       ctx.stroke();
     } else {
       // Wide open smile clipped to head — white teeth make the grin obvious.
@@ -1509,29 +1547,29 @@
       // Dark mouth cavity
       ctx.fillStyle = '#2a0814';
       ctx.beginPath();
-      ctx.moveTo(p.x - halfW, topY);
-      ctx.quadraticCurveTo(p.x, topY - openH * 0.15, p.x + halfW, topY);
-      ctx.quadraticCurveTo(p.x, botY + openH * 0.35, p.x - halfW, topY);
+      ctx.moveTo(px - halfW, topY);
+      ctx.quadraticCurveTo(px, topY - openH * 0.15, px + halfW, topY);
+      ctx.quadraticCurveTo(px, botY + openH * 0.35, px - halfW, topY);
       ctx.closePath();
       ctx.fill();
 
       // White teeth band across the top of the smile
       ctx.save();
       ctx.beginPath();
-      ctx.moveTo(p.x - halfW, topY);
-      ctx.quadraticCurveTo(p.x, topY - openH * 0.15, p.x + halfW, topY);
-      ctx.quadraticCurveTo(p.x, botY + openH * 0.35, p.x - halfW, topY);
+      ctx.moveTo(px - halfW, topY);
+      ctx.quadraticCurveTo(px, topY - openH * 0.15, px + halfW, topY);
+      ctx.quadraticCurveTo(px, botY + openH * 0.35, px - halfW, topY);
       ctx.closePath();
       ctx.clip();
       var toothH = Math.max(2, openH * 0.42);
       ctx.fillStyle = '#fff8f0';
-      ctx.fillRect(p.x - halfW, topY - 1, halfW * 2, toothH);
+      ctx.fillRect(px - halfW, topY - 1, halfW * 2, toothH);
       // Tooth gaps
       ctx.strokeStyle = '#2a0814';
       ctx.lineWidth = Math.max(1, 0.7 * s);
       var teeth = 3 + Math.round(grow * 5);
       for (var ti = 1; ti < teeth; ti++) {
-        var tx = p.x - halfW + (ti / teeth) * halfW * 2;
+        var tx = px - halfW + (ti / teeth) * halfW * 2;
         ctx.beginPath();
         ctx.moveTo(tx, topY);
         ctx.lineTo(tx, topY + toothH);
@@ -1543,9 +1581,9 @@
       ctx.strokeStyle = '#1a0610';
       ctx.lineWidth = Math.max(1.5, 1.3 * s);
       ctx.beginPath();
-      ctx.moveTo(p.x - halfW, topY);
-      ctx.quadraticCurveTo(p.x, topY - openH * 0.15, p.x + halfW, topY);
-      ctx.quadraticCurveTo(p.x, botY + openH * 0.35, p.x - halfW, topY);
+      ctx.moveTo(px - halfW, topY);
+      ctx.quadraticCurveTo(px, topY - openH * 0.15, px + halfW, topY);
+      ctx.quadraticCurveTo(px, botY + openH * 0.35, px - halfW, topY);
       ctx.closePath();
       ctx.stroke();
     }
@@ -1555,9 +1593,10 @@
       for (var i = 0; i < 8; i++) {
         var a = (i / 8) * Math.PI * 2 + state.salad * 0.05;
         var rr = bodyH * 0.7;
-        ctx.fillRect(p.x + Math.cos(a) * rr - 2, p.y + Math.sin(a) * rr - 2, 4, 4);
+        ctx.fillRect(px + Math.cos(a) * rr - 2, py + Math.sin(a) * rr - 2, 4, 4);
       }
     }
+    ctx.restore();
   }
 
   function drawSaladBurst() {
@@ -1580,10 +1619,103 @@
     ctx.textAlign = 'left';
   }
 
+  function nearDoorOrPortal() {
+    var pr = playerRadius();
+    if (state.scene === 'attic' && state.doorOpen) {
+      var door = doorGeom();
+      if (dist(state.player.x, state.player.y, door.cx, door.cy) < pr + door.r * 0.7) return true;
+    }
+    if (state.scene === 'attic' && state.belchertown) {
+      if (dist(state.player.x, state.player.y, 22, H / 2) < pr + 28) return true;
+    }
+    return false;
+  }
+
+  function tickEdgeBounce() {
+    var dt = state._dt || 1 / 60;
+    if (state.edgeGrace > 0) {
+      state.edgeGrace -= dt;
+      if (state.edgeGrace < 0) state.edgeGrace = 0;
+    }
+    if (state.bounceT > 0) {
+      state.bounceT -= dt;
+      if (state.bounceT < 0) state.bounceT = 0;
+    }
+
+    var edgeApi = window.AtticEdge;
+    if (!edgeApi) return;
+    if (nearDoorOrPortal()) {
+      state.edgeLatch = false;
+      return;
+    }
+
+    var pr = playerRadius();
+    var hit = edgeApi.isEdgeContact({
+      scene: state.scene,
+      saladClosing: state.saladClosing,
+      saladInset: state.saladInset,
+      playerR: pr,
+      player: state.player,
+      W: W,
+      H: H
+    });
+    if (!hit) {
+      state.edgeLatch = false;
+      return;
+    }
+    if (state.edgeLatch || state.edgeGrace > 0) return;
+
+    state.edgeLatch = true;
+    var bounds = edgeApi.playBounds(state.scene, state.saladClosing, state.saladInset, pr, W, H);
+    var result = edgeApi.applyEdgeTouch({
+      score: state.score,
+      size: state.size,
+      saladClosing: state.saladClosing,
+      scene: state.scene,
+      saladInset: state.saladInset,
+      playerR: pr,
+      player: state.player,
+      bounds: bounds,
+      W: W,
+      H: H
+    });
+    state.score = result.score;
+    state.size = result.size;
+    state.player.x = result.player.x;
+    state.player.y = result.player.y;
+    state.bounceT = result.bounceT || 0;
+    state.edgeGrace = edgeApi.EDGE_GRACE_SEC || 0.35;
+    if (result.recenterDrag) state.recenterDrag = true;
+    hud();
+    if (result.message) say(result.message);
+  }
+
+  function forceEdgeTouchForTest() {
+    // Bypass latch/grace for deterministic unit/integration checks.
+    state.edgeLatch = false;
+    state.edgeGrace = 0;
+    var edgeApi = window.AtticEdge;
+    if (!edgeApi) return null;
+    var pr = playerRadius();
+    var bounds = edgeApi.playBounds(state.scene, state.saladClosing, state.saladInset, pr, W, H);
+    // Park on the left edge so contact is unambiguous.
+    state.player.x = bounds.minX;
+    state.player.y = (bounds.minY + bounds.maxY) / 2;
+    tickEdgeBounce();
+    return {
+      score: state.score,
+      size: state.size,
+      player: { x: state.player.x, y: state.player.y },
+      saladClosing: state.saladClosing,
+      bounceT: state.bounceT
+    };
+  }
+
   function update() {
     if (state.salad > 0) state.salad--;
 
     applyWasdMove();
+    tickEdgeBounce();
 
     var pr = playerRadius();
 
@@ -1678,12 +1810,70 @@
     store: afgStore,
     getProfile: function () { return profile; },
     getScore: function () { return state.score; },
-    setScore: function (n) { state.score = Math.max(0, Math.floor(Number(n) || 0)); },
+    setScore: function (n) { state.score = Math.max(0, Math.floor(Number(n) || 0)); hud(); },
+    getSize: function () { return state.size; },
+    setSize: function (n) { state.size = Math.max(0.1, Number(n) || 1); },
+    getState: function () {
+      return {
+        score: state.score,
+        size: state.size,
+        scene: state.scene,
+        saladClosing: state.saladClosing,
+        saladShouted: state.saladShouted,
+        saladInset: state.saladInset,
+        player: { x: state.player.x, y: state.player.y },
+        bounceT: state.bounceT,
+        edgeLatch: state.edgeLatch,
+        edgeGrace: state.edgeGrace
+      };
+    },
+    setScene: function (scene) { state.scene = scene; },
+    setSaladClosing: function (on) {
+      state.saladClosing = !!on;
+      if (on) {
+        state.scene = 'belch';
+        state.saladCloseT = 0;
+      }
+    },
+    forceEdgeTouch: forceEdgeTouchForTest,
+    triggerSaladShout: function () {
+      state.saladShouted = false;
+      var patch = window.AtticEdge
+        ? AtticEdge.onLastBelchItemEaten({ saladShouted: false })
+        : { shouldPlaySaladShout: true };
+      state.saladClosing = true;
+      state.scene = 'belch';
+      state.saladCloseT = 0;
+      if (patch.shouldPlaySaladShout) {
+        state.saladShouted = true;
+        say("I don't even like salad");
+        playDontLikeSalad();
+      }
+      return { lastSfx: { url: lastSfx.url, priority: lastSfx.priority }, saladShouted: state.saladShouted };
+    },
+    eatLastBelchItem: function () {
+      // Ensure belch scene with one uneaten item, then eat it (fires shout).
+      state.scene = 'belch';
+      state.saladClosing = false;
+      state.saladShouted = false;
+      state.belchItems = [{ x: state.player.x, y: state.player.y, r: 10, eaten: false, kind: 'chopsticks' }];
+      eatBelchItem(state.belchItems[0]);
+      return {
+        saladClosing: state.saladClosing,
+        saladShouted: state.saladShouted,
+        lastSfx: { url: lastSfx.url, priority: lastSfx.priority },
+        msg: elMsg.textContent
+      };
+    },
+    getLastSfx: function () { return { url: lastSfx.url, priority: lastSfx.priority, at: lastSfx.at }; },
+    playDontLikeSalad: playDontLikeSalad,
     bumpHighIfNeeded: bumpHighIfNeeded,
     resetAll: resetAll,
     hud: hud,
     saveProfile: saveProfile,
-    exportSnapshot: function () { return afgStore.exportSnapshot(); }
+    exportSnapshot: function () { return afgStore.exportSnapshot(); },
+    W: W,
+    H: H
   };
 
   resetAll();
