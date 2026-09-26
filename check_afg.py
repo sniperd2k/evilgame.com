@@ -29,9 +29,7 @@ def read_body():
 
 # Whitelist only — never reflect arbitrary Origin when credentials=true.
 ALLOWED_ORIGINS = frozenset({
-    "http://evilgame.com",
     "https://evilgame.com",
-    "http://www.evilgame.com",
     "https://www.evilgame.com",
     "http://localhost",
     "http://127.0.0.1",

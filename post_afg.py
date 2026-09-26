@@ -152,7 +152,7 @@ def main():
         "nick": nick,
         "score": score,
         "highScore": high,
-        "text": "*%s* just posted from Attic Gaming\nScore: *%d* · High: *%d*\nhttp://evilgame.com/attic.html"
+        "text": "*%s* just posted from Attic Gaming\nScore: *%d* · High: *%d*\nhttps://evilgame.com/attic.html"
         % (nick, score, high),
     }
     headers = {"Content-Type": "application/json"}

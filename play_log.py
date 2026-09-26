@@ -8,9 +8,7 @@ import play_log_lib as lib
 
 # Whitelist CORS origins (never reflect arbitrary Origin with credentials).
 ALLOWED_ORIGINS = frozenset({
-    "http://evilgame.com",
     "https://evilgame.com",
-    "http://www.evilgame.com",
     "https://www.evilgame.com",
     "http://localhost",
     "http://127.0.0.1",
