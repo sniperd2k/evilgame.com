@@ -679,16 +679,10 @@
     state.player.y = H / 2;
     state.player.hasBroom = false;
     state.player.stuckT = 0;
-    state.recenterDrag = true;
-    state.dragging = false;
     state.shelfSlide = false;
     if (reshuffle) buildShelves();
-    // Ensure Mandy not born inside a shelf
-    (function () {
-      var spot = freeSpotNear(state.player.x, state.player.y, state.player.r, false);
-      state.player.x = spot.x;
-      state.player.y = spot.y;
-    })();
+    // Ensure Mandy not born inside a shelf + restore input after cinema
+    restorePlayControl();
     spawnCats(state.catsNeeded);
     hud();
   }
@@ -732,6 +726,48 @@
     beginRonnie();
   }
 
+  function releaseInputLock() {
+    // Cinema / soft-reset must never leave pointer capture or a stale
+    // activePointerId behind — that permanently blocks drag on mobile.
+    state.dragging = false;
+    state.recenterDrag = true;
+    activePointerId = null;
+    movePending = false;
+    moveEvt = null;
+    keys.w = keys.a = keys.s = keys.d = false;
+    try { canvas.classList.remove('dragging'); } catch (e1) {}
+    try {
+      if (canvas.hasPointerCapture) {
+        // Release any captured pointers we may still hold
+        for (var pi = 0; pi < 8; pi++) {
+          try {
+            if (canvas.hasPointerCapture(pi)) canvas.releasePointerCapture(pi);
+          } catch (e2) {}
+        }
+      }
+    } catch (e3) {}
+  }
+
+  function restorePlayControl() {
+    // Called whenever we re-enter play after cinema / level start.
+    releaseInputLock();
+    var p = state.player;
+    p.hasBroom = false;
+    p.stuckT = 0;
+    // Never leave Mandy off-canvas or buried in a shelf after reshuffle
+    if (p.x < WALL + p.r || p.x > W - WALL - p.r ||
+        p.y < TOP_BAR + p.r || p.y > H - WALL - p.r ||
+        entityDeeplyStuck(p)) {
+      var spot = freeSpotNear(W * 0.32, H / 2, p.r, false);
+      p.x = spot.x;
+      p.y = spot.y;
+    } else {
+      var c = clampPlayer(p.x, p.y);
+      p.x = c.x;
+      p.y = c.y;
+    }
+  }
+
   function beginRonnie() {
     state.lastRonnieAt = state.score;
     state.mode = 'ronnie_intro';
@@ -745,7 +781,8 @@
       vy: 0,
       crowCd: 0
     };
-    state.dragging = false;
+    // Drop drag WITHOUT waiting for pointerup — see releaseInputLock
+    releaseInputLock();
     playCockadoodle();
     showFanfare();
     say('COCK-A-DOODLE-DOO! RONNIE BURSTS IN THE FRONT DOOR!');
@@ -1047,16 +1084,20 @@
   }
 
   function onUp(e) {
-    if (!state.dragging) return;
-    if (activePointerId != null && e.pointerId != null && e.pointerId !== activePointerId) return;
+    // Even if cinema force-cleared dragging, still retire the pointer id /
+    // capture so the next touch is not permanently rejected.
+    var samePtr = (activePointerId == null || e.pointerId == null || e.pointerId === activePointerId);
+    if (!samePtr) return;
+    if (!state.dragging && activePointerId == null) return;
     e.preventDefault();
-    if (movePending && moveEvt) {
+    if (state.dragging && movePending && moveEvt) {
       applyDragFromEvent(moveEvt);
       movePending = false;
     }
     state.dragging = false;
     activePointerId = null;
     moveEvt = null;
+    movePending = false;
     canvas.classList.remove('dragging');
     try {
       if (e.pointerId != null && canvas.releasePointerCapture) canvas.releasePointerCapture(e.pointerId);
@@ -1466,6 +1507,9 @@
 
     if (state.mode === 'soft_reset') {
       softResetKeepScore();
+      // Belt-and-suspenders: cinema is over, input must work again
+      restorePlayControl();
+      state.mode = 'play';
     }
   }
 
@@ -1900,6 +1944,30 @@
   buildShelves();
   resetAll();
   requestAnimationFrame(frame);
+
+  // Test / debug hook (playtest drives cinema + asserts post-reset movement)
+  window.__MANDY_STORE__ = {
+    getState: function () { return state; },
+    getKeys: function () { return keys; },
+    setKey: function (k, v) { if (k in keys) keys[k] = !!v; },
+    tick: function (dt) { state._dt = dt || 1 / 60; update(dt || 1 / 60); },
+    update: update,
+    applyWasdMove: applyWasdMove,
+    clampPlayer: clampPlayer,
+    releaseInputLock: releaseInputLock,
+    restorePlayControl: restorePlayControl,
+    beginRonnie: beginRonnie,
+    softResetKeepScore: softResetKeepScore,
+    startLevel: startLevel,
+    catExited: catExited,
+    assignShelfShuffleTargets: assignShelfShuffleTargets,
+    entityDeeplyStuck: entityDeeplyStuck,
+    freeSpotNear: freeSpotNear,
+    getActivePointerId: function () { return activePointerId; },
+    setActivePointerId: function (id) { activePointerId = id; },
+    W: W,
+    H: H
+  };
 })();
 </script>
 </body>

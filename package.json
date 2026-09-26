@@ -1,0 +1,11 @@
+{
+  "name": "evilgame.com",
+  "private": true,
+  "description": "EVILGAME static site + Mandy's Store playtests",
+  "scripts": {
+    "test:farm": "node tests/farm-input-lock.test.mjs && node tests/farm-ronnie-cycle.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^21.11.0"
+  }
+}
