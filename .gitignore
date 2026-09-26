@@ -2,3 +2,8 @@ App_Data/afg_webhook.txt
 App_Data/afg_webhook_key.txt
 afg_webhook.txt
 afg_webhook_key.txt
+__pycache__/
+*.pyc
+*.bak
+*.bak-*
+farm.html.bak-pre-cinema

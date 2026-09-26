@@ -159,7 +159,7 @@
     <canvas id="c" width="640" height="480"></canvas>
     <div id="fanfare" aria-hidden="true"><div class="burst"><div class="word">RONNIE!!!<br>COCK-A-DOODLE-DOO</div></div></div>
   </div>
-  <div id="msg">Drag Mandy. Push those cats out the FRONT DOOR.</div>
+  <div id="msg">Drag Mandy. Shove 3 cats out the FRONT DOOR... then RUN from Ronnie!</div>
   <div class="bar">
     <a class="back" href="index.html">&lt;- PROGRAM MENU</a>
     <button type="button" class="reset" id="reset">RESET</button>
@@ -273,16 +273,18 @@
     level: 1,
     catsNeeded: 1,
     cats: [],
-    player: { x: W * 0.35, y: H / 2, r: 16 },
+    player: { x: W * 0.35, y: H / 2, r: 16, hasBroom: false, stuckT: 0 },
     dragging: false,
     dragOff: { x: 0, y: 0 },
     recenterDrag: false,
-    mode: 'play', // play | ronnie_intro | ronnie_chase | soft_reset
+    // play | ronnie_intro | ronnie_chase | ronnie_bounce | mandy_return | broom_chase | soft_reset
+    mode: 'play',
     modeT: 0,
     ronnie: null,
     lastRonnieAt: 0,
     _dt: 1 / 60,
-    shelves: []
+    shelves: [],
+    shelfSlide: false
   };
 
   function say(text) {
@@ -321,18 +323,285 @@
     say(profile.nick + ' RUNS THE STORE.');
   }
 
-  function buildShelves() {
-    // Decorative aisle props - soft collision only for cats/player.
-    state.shelves = [
-      { x: 90, y: 90, w: 70, h: 36, label: 'FEED' },
-      { x: 220, y: 90, w: 70, h: 36, label: 'HAY' },
-      { x: 350, y: 90, w: 70, h: 36, label: 'EGGS' },
-      { x: 90, y: H - 100, w: 70, h: 36, label: 'MILK' },
-      { x: 220, y: H - 100, w: 70, h: 36, label: 'SEED' },
-      { x: 350, y: H - 100, w: 70, h: 36, label: 'JAM' },
-      { x: 480, y: 160, w: 40, h: 70, label: '' },
-      { x: 480, y: 280, w: 40, h: 70, label: '' }
-    ];
+  var SHELF_LABELS = [
+    'FEED', 'HAY', 'EGGS', 'MILK', 'SEED', 'JAM', 'CORN', 'SOAP',
+    'NAILS', 'BITS', 'WOOL', 'BEANS', 'PICKLE', 'FLOUR', 'OATS'
+  ];
+  var OBSTACLE_KINDS = ['shelf', 'crate', 'barrel', 'cart', 'stack'];
+
+  function randRange(a, b) {
+    return a + Math.random() * (b - a);
+  }
+
+  function rectsOverlap(a, b, pad) {
+    pad = pad || 0;
+    return !(a.x + a.w + pad < b.x || b.x + b.w + pad < a.x ||
+             a.y + a.h + pad < b.y || b.y + b.h + pad < a.y);
+  }
+
+  function doorKeepClear(s) {
+    // Keep a clear corridor to the front door + Mandy spawn zone
+    var doorZone = { x: W - 130, y: DOOR.y - 30, w: 130, h: DOOR.h + 60 };
+    var spawnZone = { x: W * 0.22, y: H / 2 - 50, w: 90, h: 100 };
+    return !rectsOverlap(s, doorZone, 4) && !rectsOverlap(s, spawnZone, 4);
+  }
+
+  function makeObstacle(kind, x, y, label) {
+    var w, h;
+    if (kind === 'crate') { w = 34 + Math.floor(Math.random() * 18); h = 30 + Math.floor(Math.random() * 16); }
+    else if (kind === 'barrel') { w = 28 + Math.floor(Math.random() * 10); h = 36 + Math.floor(Math.random() * 14); }
+    else if (kind === 'cart') { w = 55 + Math.floor(Math.random() * 25); h = 28 + Math.floor(Math.random() * 12); }
+    else if (kind === 'stack') { w = 26 + Math.floor(Math.random() * 14); h = 48 + Math.floor(Math.random() * 28); }
+    else { w = 50 + Math.floor(Math.random() * 40); h = 28 + Math.floor(Math.random() * 20); }
+    return {
+      x: x, y: y, w: w, h: h,
+      label: label || '',
+      kind: kind,
+      tx: x, ty: y,
+      vx: 0, vy: 0,
+      sliding: false
+    };
+  }
+
+  function buildShelves(forcePattern) {
+    // Random varied aisle layouts each round (shapes/sizes/types).
+    var pattern = forcePattern != null ? forcePattern : Math.floor(Math.random() * 5);
+    var shelves = [];
+    var labels = SHELF_LABELS.slice();
+    function nextLabel() {
+      if (!labels.length) labels = SHELF_LABELS.slice();
+      var i = Math.floor(Math.random() * labels.length);
+      return labels.splice(i, 1)[0];
+    }
+    function tryPlace(kind, x, y, label, pad) {
+      var s = makeObstacle(kind, Math.round(x), Math.round(y), label);
+      if (s.x < WALL + 8) s.x = WALL + 8;
+      if (s.y < TOP_BAR + 8) s.y = TOP_BAR + 8;
+      if (s.x + s.w > W - WALL - 20) s.x = W - WALL - 20 - s.w;
+      if (s.y + s.h > H - WALL - 8) s.y = H - WALL - 8 - s.h;
+      if (!doorKeepClear(s)) return false;
+      for (var i = 0; i < shelves.length; i++) {
+        if (rectsOverlap(s, shelves[i], pad == null ? 14 : pad)) return false;
+      }
+      shelves.push(s);
+      return true;
+    }
+
+    var attempts, i, kind, x, y;
+    if (pattern === 0) {
+      // Twin aisle rows
+      for (i = 0; i < 3; i++) {
+        tryPlace('shelf', 80 + i * 130, 88, nextLabel());
+        tryPlace('shelf', 80 + i * 130, H - 105, nextLabel());
+      }
+      tryPlace('stack', 470, 155, '');
+      tryPlace('barrel', 490, 300, '');
+    } else if (pattern === 1) {
+      // Diagonal gauntlet
+      tryPlace('crate', 70, 100, nextLabel());
+      tryPlace('shelf', 180, 160, nextLabel());
+      tryPlace('barrel', 300, 220, '');
+      tryPlace('cart', 120, 320, nextLabel());
+      tryPlace('stack', 400, 100, '');
+      tryPlace('shelf', 360, 340, nextLabel());
+      tryPlace('crate', 250, 90, nextLabel());
+    } else if (pattern === 2) {
+      // Clustered market stalls + tall stacks
+      tryPlace('shelf', 70, 90, nextLabel());
+      tryPlace('shelf', 160, 90, nextLabel());
+      tryPlace('cart', 70, H - 110, nextLabel());
+      tryPlace('barrel', 200, H - 120, '');
+      tryPlace('barrel', 250, H - 115, '');
+      tryPlace('stack', 420, 140, '');
+      tryPlace('stack', 460, 250, '');
+      tryPlace('crate', 320, 200, nextLabel());
+    } else if (pattern === 3) {
+      // Wide center island + side crates
+      tryPlace('shelf', 200, H / 2 - 40, nextLabel(), 10);
+      tryPlace('shelf', 280, H / 2 - 40, nextLabel(), 10);
+      tryPlace('crate', 70, 100, nextLabel());
+      tryPlace('crate', 70, H - 120, nextLabel());
+      tryPlace('cart', 400, 100, nextLabel());
+      tryPlace('barrel', 430, 320, '');
+      tryPlace('stack', 140, 220, '');
+    } else {
+      // Scatter chaos (still navigable)
+      for (attempts = 0; attempts < 80 && shelves.length < 8; attempts++) {
+        kind = OBSTACLE_KINDS[Math.floor(Math.random() * OBSTACLE_KINDS.length)];
+        x = randRange(60, W - 200);
+        y = randRange(TOP_BAR + 30, H - 90);
+        tryPlace(kind, x, y, kind === 'shelf' || kind === 'crate' || kind === 'cart' ? nextLabel() : '');
+      }
+    }
+    // Guarantee at least a few props
+    while (shelves.length < 5) {
+      kind = OBSTACLE_KINDS[shelves.length % OBSTACLE_KINDS.length];
+      x = 80 + shelves.length * 70;
+      y = (shelves.length % 2 === 0) ? 100 : H - 110;
+      tryPlace(kind, x, y, nextLabel()) || shelves.push(makeObstacle(kind, x, y, nextLabel()));
+    }
+    state.shelves = shelves;
+    state.shelfSlide = false;
+  }
+
+  function assignShelfShuffleTargets() {
+    // Pick new free targets so Ronnie's bounce-pass reshuffles the floor for next round.
+    var used = [];
+    var i, s, tries, nx, ny, candidate, ok, j;
+    for (i = 0; i < state.shelves.length; i++) {
+      s = state.shelves[i];
+      ok = false;
+      for (tries = 0; tries < 60; tries++) {
+        nx = randRange(WALL + 10, W - 160 - s.w);
+        ny = randRange(TOP_BAR + 16, H - WALL - 16 - s.h);
+        candidate = { x: nx, y: ny, w: s.w, h: s.h };
+        if (!doorKeepClear(candidate)) continue;
+        ok = true;
+        for (j = 0; j < used.length; j++) {
+          if (rectsOverlap(candidate, used[j], 12)) { ok = false; break; }
+        }
+        if (ok) {
+          s.tx = Math.round(nx);
+          s.ty = Math.round(ny);
+          s.sliding = true;
+          s.vx = (s.tx - s.x) * 0.08;
+          s.vy = (s.ty - s.y) * 0.08;
+          used.push({ x: s.tx, y: s.ty, w: s.w, h: s.h });
+          break;
+        }
+      }
+      if (!ok) {
+        // Fallback: nudge from current spot
+        s.tx = Math.max(WALL + 10, Math.min(W - 160 - s.w, s.x + randRange(-80, 80)));
+        s.ty = Math.max(TOP_BAR + 16, Math.min(H - WALL - 16 - s.h, s.y + randRange(-70, 70)));
+        s.sliding = true;
+        used.push({ x: s.tx, y: s.ty, w: s.w, h: s.h });
+      }
+    }
+    state.shelfSlide = true;
+  }
+
+  function updateShelfSlide(dt) {
+    if (!state.shelfSlide) return;
+    var i, s, dx, dy, d, step, allDone = true;
+    var spd = 4.2 * (dt * 60);
+    for (i = 0; i < state.shelves.length; i++) {
+      s = state.shelves[i];
+      if (!s.sliding) continue;
+      dx = s.tx - s.x;
+      dy = s.ty - s.y;
+      d = Math.sqrt(dx * dx + dy * dy);
+      if (d < 2.5) {
+        s.x = s.tx;
+        s.y = s.ty;
+        s.sliding = false;
+        s.vx = 0;
+        s.vy = 0;
+      } else {
+        allDone = false;
+        step = Math.min(spd, d);
+        s.x += (dx / d) * step;
+        s.y += (dy / d) * step;
+        // Little bounce wobble while sliding
+        s.y += Math.sin((state.modeT + i) * 18) * 0.6;
+      }
+    }
+    if (allDone) state.shelfSlide = false;
+  }
+
+  function freeSpotNear(x, y, r, avoidDoor) {
+    // Spiral search for a non-overlapping spot (unstick helper).
+    var ang, rad, nx, ny, i, s, cx, cy, dx, dy, hits, k;
+    for (k = 0; k < 36; k++) {
+      ang = k * 0.7;
+      rad = 12 + k * 7;
+      nx = x + Math.cos(ang) * rad;
+      ny = y + Math.sin(ang) * rad;
+      nx = Math.max(WALL + r + 2, Math.min(W - WALL - r - 8, nx));
+      ny = Math.max(TOP_BAR + r + 2, Math.min(H - WALL - r - 2, ny));
+      if (avoidDoor && dist(nx, ny, DOOR.cx, DOOR.cy) < 70) continue;
+      hits = false;
+      for (i = 0; i < state.shelves.length; i++) {
+        s = state.shelves[i];
+        cx = Math.max(s.x, Math.min(nx, s.x + s.w));
+        cy = Math.max(s.y, Math.min(ny, s.y + s.h));
+        dx = nx - cx; dy = ny - cy;
+        if (dx * dx + dy * dy < (r + 2) * (r + 2)) { hits = true; break; }
+      }
+      if (!hits) return { x: nx, y: ny };
+    }
+    return { x: W * 0.32, y: H / 2 };
+  }
+
+  function entityDeeplyStuck(ent) {
+    var i, s, cx, cy, dx, dy, d2, r = ent.r;
+    for (i = 0; i < state.shelves.length; i++) {
+      s = state.shelves[i];
+      // Center inside rect = deeply stuck
+      if (ent.x > s.x + 2 && ent.x < s.x + s.w - 2 &&
+          ent.y > s.y + 2 && ent.y < s.y + s.h - 2) return true;
+      cx = Math.max(s.x, Math.min(ent.x, s.x + s.w));
+      cy = Math.max(s.y, Math.min(ent.y, s.y + s.h));
+      dx = ent.x - cx; dy = ent.y - cy;
+      d2 = dx * dx + dy * dy;
+      if (d2 < (r * 0.35) * (r * 0.35)) return true;
+    }
+    return false;
+  }
+
+  function unstickSafeguards(dt) {
+    // CRITICAL: Mandy / cats must never stay stuck in obstacles.
+    var p = state.player;
+    var spot, i, cat, moved;
+    if (state.mode === 'play') {
+      if (entityDeeplyStuck(p)) {
+        p.stuckT = (p.stuckT || 0) + dt;
+        if (p.stuckT > 0.12) {
+          spot = freeSpotNear(p.x, p.y, p.r, false);
+          p.x = spot.x; p.y = spot.y;
+          p.stuckT = 0;
+          state.recenterDrag = true;
+        }
+      } else {
+        p.stuckT = 0;
+      }
+    }
+    for (i = 0; i < state.cats.length; i++) {
+      cat = state.cats[i];
+      if (cat.exiting) continue;
+      if (entityDeeplyStuck(cat)) {
+        cat.stuckT = (cat.stuckT || 0) + dt;
+        if (cat.stuckT > 0.18) {
+          spot = freeSpotNear(cat.x, cat.y, cat.r, true);
+          cat.x = spot.x; cat.y = spot.y;
+          cat.vx = (Math.random() - 0.5) * 2;
+          cat.vy = (Math.random() - 0.5) * 2;
+          cat.stuckT = 0;
+        }
+      } else {
+        cat.stuckT = 0;
+      }
+      // Velocity-dead + overlapping edge: kick
+      if (!cat.exiting && Math.abs(cat.vx) < 0.05 && Math.abs(cat.vy) < 0.05) {
+        moved = false;
+        // lightly nudge if barely overlapping after clamp
+        if (entityDeeplyStuck(cat)) {
+          spot = freeSpotNear(cat.x, cat.y, cat.r, true);
+          cat.x = spot.x; cat.y = spot.y;
+          cat.vx = 1.2; cat.vy = (Math.random() - 0.5);
+          moved = true;
+        }
+        if (!moved) cat.idleStuck = (cat.idleStuck || 0) + dt;
+        else cat.idleStuck = 0;
+        if ((cat.idleStuck || 0) > 2.5) {
+          cat.vx = (Math.random() - 0.5) * 3;
+          cat.vy = (Math.random() - 0.5) * 3;
+          cat.idleStuck = 0;
+        }
+      } else {
+        cat.idleStuck = 0;
+      }
+    }
   }
 
   function spawnCats(n) {
@@ -348,6 +617,17 @@
       }
       // Keep clear of door mouth
       if (dist(x, y, DOOR.cx, DOOR.cy) < 80) ok = false;
+      // Never spawn inside / on an obstacle
+      if (ok) {
+        var si, sh, cx, cy, dx, dy;
+        for (si = 0; si < state.shelves.length; si++) {
+          sh = state.shelves[si];
+          cx = Math.max(sh.x, Math.min(x, sh.x + sh.w));
+          cy = Math.max(sh.y, Math.min(y, sh.y + sh.h));
+          dx = x - cx; dy = y - cy;
+          if (dx * dx + dy * dy < 20 * 20) { ok = false; break; }
+        }
+      }
       if (!ok) continue;
       var col = CAT_COLORS[cats.length % CAT_COLORS.length];
       cats.push({
@@ -360,13 +640,18 @@
         meowCd: 0,
         wobble: Math.random() * Math.PI * 2,
         exiting: false,
-        exitT: 0
+        exitT: 0,
+        stuckT: 0,
+        idleStuck: 0
       });
     }
     while (cats.length < n) {
+      var fb = (typeof freeSpotNear === 'function')
+        ? freeSpotNear(100 + cats.length * 40, 140 + (cats.length % 3) * 60, 12, true)
+        : { x: 100 + cats.length * 40, y: 140 + (cats.length % 3) * 60 };
       cats.push({
-        x: 100 + cats.length * 40,
-        y: 140 + (cats.length % 3) * 60,
+        x: fb.x,
+        y: fb.y,
         r: 12,
         vx: 0.2,
         vy: 0.1,
@@ -374,13 +659,15 @@
         meowCd: 0,
         wobble: 0,
         exiting: false,
-        exitT: 0
+        exitT: 0,
+        stuckT: 0,
+        idleStuck: 0
       });
     }
     state.cats = cats;
   }
 
-  function startLevel(keepScore) {
+  function startLevel(keepScore, reshuffle) {
     if (!keepScore) {
       state.score = 0;
       state.lastRonnieAt = 0;
@@ -390,8 +677,18 @@
     state.ronnie = null;
     state.player.x = W * 0.32;
     state.player.y = H / 2;
+    state.player.hasBroom = false;
+    state.player.stuckT = 0;
     state.recenterDrag = true;
     state.dragging = false;
+    state.shelfSlide = false;
+    if (reshuffle) buildShelves();
+    // Ensure Mandy not born inside a shelf
+    (function () {
+      var spot = freeSpotNear(state.player.x, state.player.y, state.player.r, false);
+      state.player.x = spot.x;
+      state.player.y = spot.y;
+    })();
     spawnCats(state.catsNeeded);
     hud();
   }
@@ -400,16 +697,17 @@
     state.level = 1;
     state.catsNeeded = 1;
     state.lastRonnieAt = 0;
-    startLevel(false);
-    say('Drag Mandy. Push those cats out the FRONT DOOR.');
+    buildShelves();
+    startLevel(false, false);
+    say('Drag Mandy. Shove 3 cats out the FRONT DOOR... then RUN from Ronnie!');
   }
 
   function softResetKeepScore() {
-    // After Ronnie chase: cats back to 1, Mandy inside, score stays.
+    // After broom finale: one cat returns, shelves already reshuffled, score stays.
     state.level = 1;
     state.catsNeeded = 1;
-    startLevel(true);
-    say('RONNIE WINS THIS ROUND. SCORE STAYS. BACK TO WORK, MANDY.');
+    startLevel(true, false);
+    say('ONE CAT SNUCK BACK IN! SCORE STAYS. 3 MORE = RONNIE AGAIN.');
   }
 
   function catExited(cat) {
@@ -422,14 +720,14 @@
     var line = EXIT_LINES[Math.floor(Math.random() * EXIT_LINES.length)];
     say(line + ' (+1)');
 
-    // Check Ronnie trigger on multiples of 10
+    // Check Ronnie trigger every 3 cats caught
     maybeTriggerRonnie();
   }
 
   function maybeTriggerRonnie() {
     if (state.mode !== 'play') return;
     if (state.score <= 0) return;
-    if (state.score % 10 !== 0) return;
+    if (state.score % 3 !== 0) return;
     if (state.score <= state.lastRonnieAt) return;
     beginRonnie();
   }
@@ -438,17 +736,19 @@
     state.lastRonnieAt = state.score;
     state.mode = 'ronnie_intro';
     state.modeT = 0;
+    // Spawn AT the front door (right) and dash into the store
     state.ronnie = {
-      x: -40,
-      y: H / 2,
+      x: DOOR.cx + 28,
+      y: DOOR.cy,
       r: 22,
       vx: 0,
-      vy: 0
+      vy: 0,
+      crowCd: 0
     };
     state.dragging = false;
     playCockadoodle();
     showFanfare();
-    say('COCK-A-DOODLE-DOO! RONNIE THE ROOSTER ENTERS!');
+    say('COCK-A-DOODLE-DOO! RONNIE BURSTS IN THE FRONT DOOR!');
   }
 
   var fanfareTimer = null;
@@ -467,10 +767,10 @@
   }
 
   function levelCleared() {
-    // All cats gone - bump difficulty
+    // All cats gone - bump difficulty (layout stays until Ronnie bounce-pass)
     state.level += 1;
     state.catsNeeded += 1;
-    startLevel(true);
+    startLevel(true, false);
     say('LEVEL ' + state.level + '! ' + state.catsNeeded + ' CATS IN THE STORE!');
   }
 
@@ -679,6 +979,18 @@
           y += oy;
         }
       }
+    }
+    // If still deeply inside a shelf after soft push, snap to free spot
+    var stuck = false;
+    for (i = 0; i < state.shelves.length; i++) {
+      s = state.shelves[i];
+      if (x > s.x + 1 && x < s.x + s.w - 1 && y > s.y + 1 && y < s.y + s.h - 1) {
+        stuck = true; break;
+      }
+    }
+    if (stuck && typeof freeSpotNear === 'function') {
+      var spot = freeSpotNear(x, y, r, false);
+      x = spot.x; y = spot.y;
     }
     return { x: x, y: y };
   }
@@ -974,40 +1286,178 @@
     }
   }
 
+  function tickRonnieCrow(r, dt) {
+    // Re-crow throughout intro + chase (not just once at spawn)
+    if (r.crowCd == null) r.crowCd = 0;
+    r.crowCd -= dt;
+    if (r.crowCd <= 0) {
+      playCockadoodle();
+      r.crowCd = 1.05 + Math.random() * 0.25;
+    }
+  }
+
+  function bounceRonnieOffShelves(r) {
+    // Physical bounce-pass: Ronnie knocks every shelf toward its shuffle target.
+    var i, s, cx, cy, dx, dy, d, overlap;
+    for (i = 0; i < state.shelves.length; i++) {
+      s = state.shelves[i];
+      cx = s.x + s.w / 2;
+      cy = s.y + s.h / 2;
+      dx = cx - r.x;
+      dy = cy - r.y;
+      d = Math.sqrt(dx * dx + dy * dy) || 1;
+      overlap = (r.r + Math.max(s.w, s.h) * 0.35) - d;
+      if (overlap > 0) {
+        // Impart slide toward assigned target (or away from Ronnie)
+        s.sliding = true;
+        state.shelfSlide = true;
+        if (s.tx == null) { s.tx = s.x; s.ty = s.y; }
+        s.x += (dx / d) * Math.min(8, overlap + 2);
+        s.y += (dy / d) * Math.min(8, overlap + 2);
+        // Reflect Ronnie a bit so he keeps ping-ponging
+        r.x -= (dx / d) * 4;
+        r.y -= (dy / d) * 4;
+        if (r.bounceCd <= 0) {
+          r.bounceI = ((r.bounceI || 0) + 1) % Math.max(1, state.shelves.length);
+          r.bounceCd = 0.12;
+        }
+      }
+    }
+  }
+
   function updateRonnie(dt) {
     var r = state.ronnie;
-    if (!r) return;
+    var p = state.player;
+    var dx, dy, d, target, sx, sy;
     state.modeT += dt;
+    updateShelfSlide(dt);
+
+    if (r) tickRonnieCrow(r, dt);
 
     if (state.mode === 'ronnie_intro') {
-      // Slide in from left, crow, then chase
-      r.x += (80 - r.x) * Math.min(1, dt * 3);
-      r.y = H / 2 + Math.sin(state.modeT * 8) * 6;
-      if (state.modeT > 1.6) {
+      // Burst IN through the front door (right), dash toward Mandy
+      var inX = Math.min(p.x + 40, W * 0.62);
+      var inY = p.y;
+      dx = inX - r.x;
+      dy = inY - r.y;
+      d = Math.sqrt(dx * dx + dy * dy) || 1;
+      r.x += (dx / d) * 6.5 * (dt * 60);
+      r.y += (dy / d) * 6.5 * (dt * 60);
+      r.y += Math.sin(state.modeT * 10) * 1.5;
+      if (state.modeT > 1.15 || dist(r.x, r.y, p.x, p.y) < 70) {
         state.mode = 'ronnie_chase';
         state.modeT = 0;
-        say('RONNIE CHASES MANDY OUT!');
+        say('RONNIE CHASES MANDY OUT THE FRONT DOOR!');
       }
       return;
     }
 
     if (state.mode === 'ronnie_chase') {
-      // Force Mandy toward the front door; Ronnie pursues
-      var targetX = DOOR.cx;
-      var targetY = DOOR.cy;
-      var p = state.player;
-      p.x += (targetX - p.x) * Math.min(1, dt * 2.2);
-      p.y += (targetY - p.y) * Math.min(1, dt * 2.2);
-      // Ronnie flies at Mandy
-      var dx = p.x - r.x;
-      var dy = p.y - r.y;
-      var d = Math.sqrt(dx * dx + dy * dy) || 1;
-      r.x += (dx / d) * 5.2 * (dt * 60);
-      r.y += (dy / d) * 5.2 * (dt * 60);
+      // Force Mandy toward the front door; Ronnie pursues, crowing the whole way
+      p.x += (DOOR.cx - p.x) * Math.min(1, dt * 2.4);
+      p.y += (DOOR.cy - p.y) * Math.min(1, dt * 2.4);
+      dx = p.x - r.x;
+      dy = p.y - r.y;
+      d = Math.sqrt(dx * dx + dy * dy) || 1;
+      r.x += (dx / d) * 5.6 * (dt * 60);
+      r.y += (dy / d) * 5.6 * (dt * 60);
       r.y += Math.sin(state.modeT * 14) * 1.2;
 
-      // Once Mandy is near/through door, soft reset
-      if (p.x > W - 40 || state.modeT > 2.4) {
+      if (p.x > W - 40 || state.modeT > 2.6) {
+        // Mandy is out — Ronnie bounce-pass reshuffles EVERY obstacle
+        p.x = W + 40;
+        assignShelfShuffleTargets();
+        r.bounceI = 0;
+        r.bounceCd = 0;
+        state.mode = 'ronnie_bounce';
+        state.modeT = 0;
+        say('RONNIE BOUNCE-PASS! AISLES GO FLYING!');
+      }
+      return;
+    }
+
+    if (state.mode === 'ronnie_bounce') {
+      if (r.bounceCd > 0) r.bounceCd -= dt;
+      // Zip between shelf centers, physically sliding them to new spots
+      if (state.shelves.length) {
+        target = state.shelves[r.bounceI % state.shelves.length];
+        sx = target.x + target.w / 2;
+        sy = target.y + target.h / 2;
+        dx = sx - r.x;
+        dy = sy - r.y;
+        d = Math.sqrt(dx * dx + dy * dy) || 1;
+        r.x += (dx / d) * 7.2 * (dt * 60);
+        r.y += (dy / d) * 7.2 * (dt * 60);
+        r.y += Math.sin(state.modeT * 16) * 2;
+        bounceRonnieOffShelves(r);
+        if (d < 28 && r.bounceCd <= 0) {
+          r.bounceI = (r.bounceI + 1) % state.shelves.length;
+          r.bounceCd = 0.08;
+        }
+      }
+      // After a full pinball pass (or timeout), Mandy returns with broom
+      if (state.modeT > 2.4 || (!state.shelfSlide && state.modeT > 1.4)) {
+        // Snap remaining shelves to targets
+        var i, s;
+        for (i = 0; i < state.shelves.length; i++) {
+          s = state.shelves[i];
+          s.x = s.tx; s.y = s.ty; s.sliding = false;
+        }
+        state.shelfSlide = false;
+        state.mode = 'mandy_return';
+        state.modeT = 0;
+        p.x = DOOR.cx + 20;
+        p.y = DOOR.cy;
+        p.hasBroom = true;
+        say('MANDY RETURNS... WITH A BROOM!');
+      }
+      return;
+    }
+
+    if (state.mode === 'mandy_return') {
+      // Mandy marches back in with broom; Ronnie freezes mid-crow
+      var homeX = W * 0.45;
+      var homeY = H / 2;
+      p.x += (homeX - p.x) * Math.min(1, dt * 2.8);
+      p.y += (homeY - p.y) * Math.min(1, dt * 2.8);
+      if (r) {
+        r.y += Math.sin(state.modeT * 10) * 0.8;
+      }
+      if (state.modeT > 1.1 || dist(p.x, p.y, homeX, homeY) < 18) {
+        state.mode = 'broom_chase';
+        state.modeT = 0;
+        say('SHOO, RONNIE! BROOM BEATS ROOSTER!');
+      }
+      return;
+    }
+
+    if (state.mode === 'broom_chase') {
+      // Mandy shuffles Ronnie out the front door with the broom
+      if (!r) {
+        state.mode = 'soft_reset';
+        state.modeT = 0;
+        return;
+      }
+      // Herd Ronnie toward door
+      var outX = DOOR.cx + 30;
+      var outY = DOOR.cy;
+      // Mandy stays behind Ronnie, poking
+      var behindX = r.x - 36;
+      var behindY = r.y;
+      p.x += (behindX - p.x) * Math.min(1, dt * 3.2);
+      p.y += (behindY - p.y) * Math.min(1, dt * 3.2);
+      dx = outX - r.x;
+      dy = outY - r.y;
+      d = Math.sqrt(dx * dx + dy * dy) || 1;
+      r.x += (dx / d) * 5.8 * (dt * 60);
+      r.y += (dy / d) * 5.8 * (dt * 60);
+      r.y += Math.sin(state.modeT * 20) * 1.5;
+      // Broom poke impulse
+      if (dist(p.x, p.y, r.x, r.y) < 50) {
+        r.x += (dx / d) * 2.5;
+      }
+      if (r.x > W - 20 || state.modeT > 2.3) {
+        state.ronnie = null;
         state.mode = 'soft_reset';
         state.modeT = 0;
       }
@@ -1023,12 +1473,13 @@
     applyWasdMove();
     if (state.mode === 'play') {
       updateCats(dt);
-      // Ronnie can trigger mid-level when score hits 10/20/30...
-      // (maybeTriggerRonnie called from catExited)
+      unstickSafeguards(dt);
+      // Ronnie triggers every 3 cats (maybeTriggerRonnie from catExited)
     } else {
-      // Still let remaining cats drift during intro
+      // Cats may still drift / exit during cinema
       updateCats(dt);
       updateRonnie(dt);
+      unstickSafeguards(dt);
     }
   }
 
@@ -1084,24 +1535,82 @@
     ctx.fillStyle = 'rgba(160, 200, 220, 0.08)';
     ctx.fillRect(64, 140, 50, 70);
 
-    // Shelves
-    var i, s;
+    // Obstacles (shelves / crates / barrels / carts / stacks)
+    var i, s, kind;
     for (i = 0; i < state.shelves.length; i++) {
       s = state.shelves[i];
-      ctx.fillStyle = '#6a4830';
-      ctx.fillRect(s.x, s.y, s.w, s.h);
-      ctx.fillStyle = '#8a6848';
-      ctx.fillRect(s.x, s.y, s.w, 8);
-      ctx.strokeStyle = '#2a1a10';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(s.x, s.y, s.w, s.h);
-      // jars / boxes
-      ctx.fillStyle = '#c05040';
-      ctx.fillRect(s.x + 8, s.y + 14, 10, 14);
-      ctx.fillStyle = '#e8c060';
-      ctx.fillRect(s.x + 24, s.y + 16, 12, 12);
-      ctx.fillStyle = '#5080c0';
-      ctx.fillRect(s.x + 42, s.y + 14, 10, 14);
+      kind = s.kind || 'shelf';
+      if (kind === 'barrel') {
+        ctx.fillStyle = '#8a5030';
+        ctx.beginPath();
+        ctx.ellipse(s.x + s.w / 2, s.y + s.h / 2, s.w / 2, s.h / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#2a1a10';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.strokeStyle = '#c08050';
+        ctx.beginPath();
+        ctx.moveTo(s.x + 4, s.y + s.h * 0.3);
+        ctx.lineTo(s.x + s.w - 4, s.y + s.h * 0.3);
+        ctx.moveTo(s.x + 4, s.y + s.h * 0.7);
+        ctx.lineTo(s.x + s.w - 4, s.y + s.h * 0.7);
+        ctx.stroke();
+      } else if (kind === 'crate') {
+        ctx.fillStyle = '#a07040';
+        ctx.fillRect(s.x, s.y, s.w, s.h);
+        ctx.strokeStyle = '#3a2818';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(s.x, s.y, s.w, s.h);
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y); ctx.lineTo(s.x + s.w, s.y + s.h);
+        ctx.moveTo(s.x + s.w, s.y); ctx.lineTo(s.x, s.y + s.h);
+        ctx.stroke();
+      } else if (kind === 'cart') {
+        ctx.fillStyle = '#6a5840';
+        ctx.fillRect(s.x, s.y + 6, s.w, s.h - 10);
+        ctx.fillStyle = '#8a7858';
+        ctx.fillRect(s.x + 4, s.y, s.w - 8, 10);
+        ctx.fillStyle = '#2a2a2a';
+        ctx.beginPath();
+        ctx.arc(s.x + 10, s.y + s.h - 2, 5, 0, Math.PI * 2);
+        ctx.arc(s.x + s.w - 10, s.y + s.h - 2, 5, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (kind === 'stack') {
+        ctx.fillStyle = '#b09060';
+        ctx.fillRect(s.x + 2, s.y + s.h * 0.55, s.w - 4, s.h * 0.4);
+        ctx.fillStyle = '#c0a070';
+        ctx.fillRect(s.x, s.y + s.h * 0.28, s.w, s.h * 0.3);
+        ctx.fillStyle = '#d0b080';
+        ctx.fillRect(s.x + 4, s.y, s.w - 8, s.h * 0.3);
+        ctx.strokeStyle = '#3a2818';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(s.x, s.y, s.w, s.h);
+      } else {
+        ctx.fillStyle = '#6a4830';
+        ctx.fillRect(s.x, s.y, s.w, s.h);
+        ctx.fillStyle = '#8a6848';
+        ctx.fillRect(s.x, s.y, s.w, 8);
+        ctx.strokeStyle = '#2a1a10';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(s.x, s.y, s.w, s.h);
+        ctx.fillStyle = '#c05040';
+        ctx.fillRect(s.x + 8, s.y + 14, 10, 14);
+        ctx.fillStyle = '#e8c060';
+        ctx.fillRect(s.x + 24, s.y + 16, 12, 12);
+        ctx.fillStyle = '#5080c0';
+        if (s.w > 48) ctx.fillRect(s.x + 42, s.y + 14, 10, 14);
+      }
+      // Motion streaks while sliding
+      if (s.sliding) {
+        ctx.strokeStyle = 'rgba(255, 224, 138, 0.45)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(s.x - 6, s.y + s.h / 2);
+        ctx.lineTo(s.x + 4, s.y + s.h / 2 - 4);
+        ctx.moveTo(s.x - 6, s.y + s.h / 2);
+        ctx.lineTo(s.x + 4, s.y + s.h / 2 + 4);
+        ctx.stroke();
+      }
       if (s.label) {
         ctx.fillStyle = '#ffe08a';
         ctx.font = '6px "Press Start 2P"';
@@ -1213,7 +1722,9 @@
 
   function drawMandy() {
     var p = state.player;
+    if (p.x > W + 10) return; // offstage during bounce-pass
     var scared = state.mode === 'ronnie_chase' || state.mode === 'ronnie_intro';
+    var determined = state.mode === 'mandy_return' || state.mode === 'broom_chase';
     // Boots
     ctx.fillStyle = '#4a3020';
     ctx.fillRect(p.x - 10, p.y + 10, 8, 6);
@@ -1241,7 +1752,6 @@
     // Eyes
     ctx.fillStyle = '#1a0610';
     if (scared) {
-      // Wide eyes
       ctx.beginPath();
       ctx.arc(p.x - 3.5, p.y - 17, 2.2, 0, Math.PI * 2);
       ctx.arc(p.x + 3.5, p.y - 17, 2.2, 0, Math.PI * 2);
@@ -1251,21 +1761,53 @@
       ctx.arc(p.x - 3, p.y - 17.5, 0.8, 0, Math.PI * 2);
       ctx.arc(p.x + 4, p.y - 17.5, 0.8, 0, Math.PI * 2);
       ctx.fill();
+    } else if (determined) {
+      // Determined squint
+      ctx.fillRect(p.x - 5, p.y - 17.5, 4, 2);
+      ctx.fillRect(p.x + 1.5, p.y - 17.5, 4, 2);
     } else {
       ctx.beginPath();
       ctx.arc(p.x - 3.5, p.y - 17, 1.5, 0, Math.PI * 2);
       ctx.arc(p.x + 3.5, p.y - 17, 1.5, 0, Math.PI * 2);
       ctx.fill();
     }
-    // Smile / O mouth
+    // Smile / O mouth / grit
     ctx.strokeStyle = '#1a0610';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     if (scared) {
       ctx.arc(p.x, p.y - 12, 2.5, 0, Math.PI * 2);
       ctx.stroke();
+    } else if (determined) {
+      ctx.moveTo(p.x - 3, p.y - 12);
+      ctx.lineTo(p.x + 3, p.y - 12);
+      ctx.stroke();
     } else {
       ctx.arc(p.x, p.y - 13, 3.5, 0.15, Math.PI - 0.15);
+      ctx.stroke();
+    }
+    // Broom (return / chase)
+    if (p.hasBroom) {
+      ctx.strokeStyle = '#8a6030';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(p.x + 8, p.y - 8);
+      ctx.lineTo(p.x + 28, p.y + 18);
+      ctx.stroke();
+      ctx.fillStyle = '#c89040';
+      ctx.beginPath();
+      ctx.moveTo(p.x + 24, p.y + 14);
+      ctx.lineTo(p.x + 36, p.y + 26);
+      ctx.lineTo(p.x + 20, p.y + 24);
+      ctx.closePath();
+      ctx.fill();
+      // Bristle lines
+      ctx.strokeStyle = '#6a4820';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p.x + 26, p.y + 16); ctx.lineTo(p.x + 34, p.y + 24);
+      ctx.moveTo(p.x + 24, p.y + 18); ctx.lineTo(p.x + 32, p.y + 26);
       ctx.stroke();
     }
     // Name tag
@@ -1335,8 +1877,11 @@
     if (state.ronnie) drawRonnie();
 
     // Mode overlay hint
-    if (state.mode === 'ronnie_intro' || state.mode === 'ronnie_chase') {
+    if (state.mode === 'ronnie_intro' || state.mode === 'ronnie_chase' || state.mode === 'ronnie_bounce') {
       ctx.fillStyle = 'rgba(255, 80, 40, 0.12)';
+      ctx.fillRect(0, 0, W, H);
+    } else if (state.mode === 'mandy_return' || state.mode === 'broom_chase') {
+      ctx.fillStyle = 'rgba(80, 200, 120, 0.10)';
       ctx.fillRect(0, 0, W, H);
     }
   }
