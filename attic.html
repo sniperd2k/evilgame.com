@@ -188,6 +188,39 @@
     80%  { transform: scale(1.02) rotate(-1deg); opacity: 1; }
     100% { transform: scale(1.35) rotate(0deg); opacity: 0; }
   }
+
+  .afg-gate {
+    position: fixed; inset: 0; z-index: 9999;
+    display: flex; align-items: flex-end; justify-content: center;
+    background: rgba(6, 4, 12, 0.9);
+    padding: 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    touch-action: auto; -webkit-user-select: auto; user-select: auto;
+  }
+  @media (min-width: 720px) and (pointer: fine) {
+    .afg-gate { align-items: center; }
+  }
+  .afg-gate-card {
+    width: min(420px, 96vw);
+    background: #12101c; border: 3px solid #7dff9a;
+    padding: 16px 14px 12px;
+  }
+  .afg-gate-title { color: #7dff9a; font-size: 12px; text-align: center; margin-bottom: 8px; }
+  .afg-gate-sub { color: #8a8098; font-size: 7px; text-align: center; margin-bottom: 14px; }
+  .afg-gate-label { display: block; color: #c8f0c0; font-size: 7px; margin-bottom: 8px; }
+  .afg-gate-input {
+    width: 100%; min-height: 52px; font-size: 18px; padding: 12px 14px;
+    border: 2px solid #3a3550; background: #0a0610; color: #7dff9a;
+    font-family: inherit; -webkit-appearance: none; appearance: none;
+  }
+  .afg-gate-input:focus { outline: none; border-color: #7dff9a; }
+  .afg-gate-go, .afg-gate-cancel {
+    width: 100%; min-height: 48px; margin-top: 10px; font: inherit; font-size: 10px;
+    cursor: pointer; border: 2px solid #7dff9a; background: rgba(125,255,154,0.12);
+    color: #7dff9a; padding: 12px;
+  }
+  .afg-gate-cancel { border-color: #3a3550; color: #8a8098; background: transparent; font-size: 8px; min-height: 40px; }
+  .afg-gate-msg { min-height: 18px; margin-top: 10px; text-align: center; font-size: 8px; color: #f0d080; }
 </style>
 </head>
 <body>
@@ -208,6 +241,48 @@
     <button type="button" class="slack" id="slackPost" title="Post nick + scores to #afg">POST TO SLACK</button>
     <button type="button" class="reset" id="reset">RESET</button>
   </div>
+<style id="afgGateBootCss">html.afg-locked body > *:not(.afg-gate){visibility:hidden!important}</style>
+<script src="afg/gate.js"></script>
+<script>
+(function () {
+  // Soft AFG gate — direct attic.html visits need unlock cookie from check_afg.py.
+  // Persistence / gameplay below are untouched.
+  try { document.documentElement.classList.add('afg-locked'); } catch (e0) {}
+  function reveal() {
+    try { document.documentElement.classList.remove('afg-locked'); } catch (e1) {}
+  }
+  function showGate() {
+    if (!window.AfgGate) {
+      location.replace('index.html?gate=attic');
+      return;
+    }
+    if (document.querySelector('.afg-gate')) return;
+    var overlay = AfgGate.createOverlay({
+      title: 'AFG LOCK',
+      targetHref: location.pathname.split('/').pop() || 'attic.html',
+      raspberryUrl: 'sfx/raspberry.wav',
+      successUrl: 'sfx/stab_painting.wav',
+      onSuccess: function () { reveal(); overlay.remove(); },
+      onCancel: function () { location.replace('index.html'); }
+    });
+    document.body.appendChild(overlay);
+  }
+  if (!window.AfgGate) {
+    // Offline / file:// — allow local play without CGI.
+    if (location.protocol === 'file:') { reveal(); return; }
+    location.replace('index.html?gate=attic');
+    return;
+  }
+  AfgGate.checkUnlocked().then(function (ok) {
+    if (ok) reveal();
+    else showGate();
+  }).catch(function () {
+    if (location.protocol === 'file:') reveal();
+    else showGate();
+  });
+})();
+</script>
+<script src="afg/persist.js"></script>
 <script>
 (function () {
   var W = 640, H = 480;
@@ -238,9 +313,8 @@
   var elMsg = document.getElementById('msg');
   var elPow = document.getElementById('pow');
 
-  // Profile lives in localStorage. Nick and scores are separate fields so
-  // renaming never wipes the high score. Clear site data = start over (fine).
-  var STORE_KEY = 'evilgame.attic.v1';
+  // Profile via AfgStore (afg/persist.js). Same key evilgame.attic.v1 so
+  // existing nick/high/niceSeen survive. Swap adapter later for Slack.
   var NICK_ADJ = [
     'Soggy', 'Crispy', 'Forbidden', 'Attic', 'Salad', 'Belchy', 'McIntyre',
     'Pixel', 'Cursed', 'Moist', 'Spicy', 'Dusty', 'Greasy', 'Haunted', 'Chunky'
@@ -257,40 +331,18 @@
     return a + n + num;
   }
 
-  function defaultProfile() {
-    return { nick: sillyNick(), highScore: 0, niceSeen: false };
-  }
-
-  function loadProfile() {
-    try {
-      var raw = localStorage.getItem(STORE_KEY);
-      if (!raw) return defaultProfile();
-      var o = JSON.parse(raw);
-      var out = defaultProfile();
-      if (o && typeof o.nick === 'string' && o.nick.trim()) {
-        out.nick = String(o.nick).trim().slice(0, 18);
-      }
-      if (o && typeof o.highScore === 'number' && isFinite(o.highScore) && o.highScore > 0) {
-        out.highScore = Math.min(999999, Math.floor(o.highScore));
-      }
-      if (o && o.niceSeen) out.niceSeen = true;
-      return out;
-    } catch (e1) {
-      return defaultProfile();
+  var afgStore = AfgStore.create({
+    gameId: 'attic',
+    defaultProfile: function () {
+      return { nick: sillyNick(), highScore: 0, niceSeen: false };
     }
-  }
+  });
 
   function saveProfile() {
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({
-        nick: profile.nick,
-        highScore: profile.highScore,
-        niceSeen: !!profile.niceSeen
-      }));
-    } catch (e1) {}
+    afgStore.setProfile(profile);
   }
 
-  var profile = loadProfile();
+  var profile = afgStore.getProfile();
   // Persist the first auto-nick so refresh keeps the same silly name.
   saveProfile();
 
@@ -346,8 +398,7 @@
 
   function bumpHighIfNeeded() {
     if (state.score > profile.highScore) {
-      profile.highScore = state.score;
-      saveProfile();
+      profile.highScore = afgStore.setHighScore(state.score);
     }
   }
 
@@ -463,6 +514,10 @@
   }
 
   function resetAll() {
+    if (state.score > 0) {
+      var recorded = afgStore.recordScore(state.score);
+      profile = recorded.profile;
+    }
     state.score = 0;
     state.room = 1;
     state.roomNugs = 0;
@@ -1620,6 +1675,20 @@
     }
     requestAnimationFrame(frame);
   }
+
+
+  // Test/debug hook (integration tests). Swappable store stays the source of truth.
+  window.__AFG_ATTIC__ = {
+    store: afgStore,
+    getProfile: function () { return profile; },
+    getScore: function () { return state.score; },
+    setScore: function (n) { state.score = Math.max(0, Math.floor(Number(n) || 0)); },
+    bumpHighIfNeeded: bumpHighIfNeeded,
+    resetAll: resetAll,
+    hud: hud,
+    saveProfile: saveProfile,
+    exportSnapshot: function () { return afgStore.exportSnapshot(); }
+  };
 
   resetAll();
   requestAnimationFrame(frame);
