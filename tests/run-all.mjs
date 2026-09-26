@@ -1,5 +1,5 @@
 /**
- * Shared test runner: AFG persist unit + attic integration + farm + optional gate.
+ * Shared test runner: AFG persist unit + attic integration + farm + gate.
  * Run: npm test
  */
 import { spawnSync } from 'node:child_process';
@@ -17,16 +17,33 @@ const REQUIRED = [
   'tests/farm-ronnie-cycle.mjs'
 ];
 
-// Gate executor may add these later — run when present, don't fail the suite if absent.
 const OPTIONAL = [
+  'tests/afg-gate-client.test.mjs',
+  'tests/afg-gate-unit.py',
+  'tests/afg-gate-integration.mjs',
+  // legacy names from harness scaffold
   'tests/afg-gate.test.mjs',
   'tests/afg-gate.integration.mjs'
 ];
 
-function runFile(rel) {
+function runNode(rel) {
   const full = path.join(ROOT, rel);
   console.log('\n=== ' + rel + ' ===');
   const r = spawnSync(process.execPath, [full], {
+    cwd: ROOT,
+    stdio: 'inherit',
+    env: process.env
+  });
+  if (r.status !== 0) {
+    console.error('FAIL:', rel, 'exit', r.status);
+    process.exit(r.status || 1);
+  }
+}
+
+function runPy(rel) {
+  const full = path.join(ROOT, rel);
+  console.log('\n=== ' + rel + ' ===');
+  const r = spawnSync('python3', [full], {
     cwd: ROOT,
     stdio: 'inherit',
     env: process.env
@@ -43,13 +60,19 @@ for (const rel of REQUIRED) {
     console.error('MISSING required test:', rel);
     process.exit(1);
   }
-  runFile(rel);
+  runNode(rel);
 }
 
+const seen = new Set();
 for (const rel of OPTIONAL) {
   const full = path.join(ROOT, rel);
-  if (fs.existsSync(full)) runFile(rel);
-  else console.log('\n(skip optional, not present:', rel + ')');
+  if (!fs.existsSync(full) || seen.has(full)) {
+    if (!fs.existsSync(full)) console.log('\n(skip optional, not present:', rel + ')');
+    continue;
+  }
+  seen.add(full);
+  if (rel.endsWith('.py')) runPy(rel);
+  else runNode(rel);
 }
 
 console.log('\nAll tests passed.');

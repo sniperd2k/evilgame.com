@@ -72,3 +72,16 @@ npm run test:afg              # unit (persist framework)
 npm run test:afg:integration  # attic return-visit (puppeteer)
 npm test                      # all: afg unit + integration + farm (+ gate if present)
 ```
+
+## Soft password gate
+
+AFG-tagged games (Attic) require a server-side password check via `check_afg.py`
+before play. Helpers:
+
+- `afg_gate.py` — normalize / match / signed unlock cookie (unit-tested)
+- `afg/gate.js` — mobile-friendly overlay + CGI client
+- Secret file: `App_Data/afg_password.txt` on IIS only (gitignored)
+
+```bash
+npm run test:gate
+```

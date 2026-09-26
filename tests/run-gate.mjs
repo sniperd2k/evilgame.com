@@ -1,21 +1,27 @@
-/** Optional gate tests — no-op until the gate executor lands files. */
+/** Gate unit + integration (JS client, Python CGI logic, CGI integration). */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const files = ['tests/afg-gate.test.mjs', 'tests/afg-gate.integration.mjs']
-  .map((f) => path.join(root, f))
-  .filter((f) => fs.existsSync(f));
+const files = [
+  'tests/afg-gate-client.test.mjs',
+  'tests/afg-gate-unit.py',
+  'tests/afg-gate-integration.mjs'
+];
 
-if (!files.length) {
-  console.log('no gate tests yet');
-  process.exit(0);
-}
-
-for (const full of files) {
-  console.log('===', path.relative(root, full), '===');
-  const r = spawnSync(process.execPath, [full], { cwd: root, stdio: 'inherit' });
+let ran = 0;
+for (const rel of files) {
+  const full = path.join(root, rel);
+  if (!fs.existsSync(full)) {
+    console.log('missing', rel);
+    process.exit(1);
+  }
+  console.log('===', rel, '===');
+  const cmd = rel.endsWith('.py') ? 'python3' : process.execPath;
+  const r = spawnSync(cmd, [full], { cwd: root, stdio: 'inherit' });
   if (r.status !== 0) process.exit(r.status || 1);
+  ran++;
 }
+console.log('gate tests passed (' + ran + ')');

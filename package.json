@@ -7,7 +7,8 @@
     "test:afg": "node tests/afg-persist.test.mjs",
     "test:afg:integration": "node tests/afg-attic-persist.integration.mjs",
     "test:farm": "node tests/farm-input-lock.test.mjs && node tests/farm-ronnie-cycle.mjs",
-    "test:gate": "node tests/run-gate.mjs"
+    "test:gate": "node tests/run-gate.mjs",
+    "test:persist": "node tests/afg-persist.test.mjs"
   },
   "devDependencies": {
     "puppeteer-core": "^21.11.0"

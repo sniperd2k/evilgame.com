@@ -178,6 +178,69 @@
     .footer .mob { display: inline; }
   }
   .footer .mob { display: none; }
+
+  /* AFG soft password gate overlay */
+  .afg-gate {
+    position: fixed; inset: 0; z-index: 40;
+    display: flex; align-items: flex-end; justify-content: center;
+    background: rgba(6, 4, 12, 0.82);
+    padding: 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  }
+  @media (min-width: 720px) and (pointer: fine) {
+    .afg-gate { align-items: center; }
+  }
+  .afg-gate-card {
+    width: min(420px, 96vw);
+    background: #12101c;
+    border: 3px solid #7dff9a;
+    box-shadow: 0 0 30px rgba(125,255,154,0.2);
+    padding: 16px 14px 12px;
+    font-family: 'Press Start 2P', monospace;
+  }
+  .afg-gate-title {
+    color: #7dff9a; font-size: 12px; text-align: center; margin-bottom: 8px;
+    letter-spacing: 1px;
+  }
+  .afg-gate-sub {
+    color: #8a8098; font-size: 7px; text-align: center; margin-bottom: 14px;
+    line-height: 1.7;
+  }
+  .afg-gate-label {
+    display: block; color: #c8f0c0; font-size: 7px; margin-bottom: 8px;
+  }
+  .afg-gate-input {
+    width: 100%;
+    min-height: 52px;
+    font-size: 18px;
+    padding: 12px 14px;
+    border: 2px solid #3a3550;
+    background: #0a0610;
+    color: #7dff9a;
+    font-family: inherit;
+    border-radius: 0;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .afg-gate-input:focus {
+    outline: none; border-color: #7dff9a;
+    box-shadow: 0 0 0 2px rgba(125,255,154,0.25);
+  }
+  .afg-gate-go, .afg-gate-cancel {
+    width: 100%; min-height: 48px; margin-top: 10px;
+    font: inherit; font-size: 10px; cursor: pointer;
+    border: 2px solid #7dff9a; background: rgba(125,255,154,0.12);
+    color: #7dff9a; padding: 12px;
+  }
+  .afg-gate-cancel {
+    border-color: #3a3550; color: #8a8098; background: transparent;
+    font-size: 8px; min-height: 40px;
+  }
+  .afg-gate-msg {
+    min-height: 18px; margin-top: 10px; text-align: center;
+    font-size: 8px; color: #f0d080; line-height: 1.6;
+  }
+  .item .tag.afg { color: #ff8ad8; }
 </style>
 </head>
 <body>
@@ -194,6 +257,7 @@
     </div>
   </div>
   <div class="toast" id="toast" role="status"></div>
+<script src="afg/gate.js"></script>
 <script>
 (function () {
   // Show date of latest GitHub commit (America/New_York)
@@ -228,9 +292,10 @@
   const programs = [
     {
       name: 'ATTIC GAMING',
-      tag: 'READY',
+      tag: 'AFG',
       href: 'attic.html',
-      live: true
+      live: true,
+      afg: true
     },
     {
       name: "MANDY'S STORE",
@@ -331,6 +396,12 @@
           showToast(p.blurb || 'Coming soon!');
           return;
         }
+        if (p.afg) {
+          if (ev) ev.preventDefault();
+          beep(660, 0.05);
+          openAfgGate(p.href);
+          return;
+        }
         beep(660, 0.05);
         // Live rows are real <a href> — let navigation proceed (Safari-safe).
         // Only force location if this wasn't a normal click on the anchor.
@@ -352,9 +423,34 @@
     });
   }
 
+  function openAfgGate(href) {
+    if (document.querySelector('.afg-gate')) return;
+    if (!window.AfgGate) {
+      window.location.href = href;
+      return;
+    }
+    AfgGate.checkUnlocked().then(function (ok) {
+      if (ok) {
+        window.location.href = href;
+        return;
+      }
+      var overlay = AfgGate.createOverlay({
+        title: 'AFG LOCK',
+        targetHref: href,
+        raspberryUrl: 'sfx/raspberry.wav',
+        successUrl: 'sfx/stab_painting.wav',
+        onCancel: function () { overlay.remove(); }
+      });
+      document.body.appendChild(overlay);
+    });
+  }
+
   function runSelected() {
     const p = programs[selected];
-    if (p.live) {
+    if (p.live && p.afg) {
+      beep(660, 0.05);
+      openAfgGate(p.href);
+    } else if (p.live) {
       beep(660, 0.05);
       window.location.href = p.href;
     } else {
@@ -362,6 +458,16 @@
       showToast(p.blurb || 'Coming soon!');
     }
   }
+
+  // Deep-link: index.html?gate=attic opens the gate immediately.
+  (function maybeAutoGate() {
+    try {
+      var q = new URLSearchParams(window.location.search || '');
+      if (q.get('gate') === 'attic' || q.get('gate') === '1') {
+        openAfgGate('attic.html');
+      }
+    } catch (e1) {}
+  })();
 
   document.addEventListener('keydown', function (e) {
     if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {

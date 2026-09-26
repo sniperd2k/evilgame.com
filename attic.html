@@ -246,11 +246,12 @@
 <script>
 (function () {
   // Soft AFG gate — direct attic.html visits need unlock cookie from check_afg.py.
-  // Persistence / gameplay below are untouched.
+  // Persistence / gameplay below are untouched. file:// skips gate (local tests).
   try { document.documentElement.classList.add('afg-locked'); } catch (e0) {}
   function reveal() {
     try { document.documentElement.classList.remove('afg-locked'); } catch (e1) {}
   }
+  if (location.protocol === 'file:') { reveal(); return; }
   function showGate() {
     if (!window.AfgGate) {
       location.replace('index.html?gate=attic');
@@ -268,18 +269,13 @@
     document.body.appendChild(overlay);
   }
   if (!window.AfgGate) {
-    // Offline / file:// — allow local play without CGI.
-    if (location.protocol === 'file:') { reveal(); return; }
     location.replace('index.html?gate=attic');
     return;
   }
   AfgGate.checkUnlocked().then(function (ok) {
     if (ok) reveal();
     else showGate();
-  }).catch(function () {
-    if (location.protocol === 'file:') reveal();
-    else showGate();
-  });
+  }).catch(function () { showGate(); });
 })();
 </script>
 <script src="afg/persist.js"></script>
