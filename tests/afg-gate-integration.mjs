@@ -84,7 +84,7 @@ async function main() {
     body: JSON.stringify({ password: 'nope' }),
     cwd: site
   })).out);
-  assert(res.status === 401, 'wrong -> 401, got ' + res.status);
+  assert(res.status === 200, 'wrong -> 200 json, got ' + res.status);
   assert(res.json && res.json.unlocked === false, 'wrong unlocked false');
   assert(!res.setCookie, 'no cookie on fail');
 

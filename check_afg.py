@@ -79,7 +79,7 @@ def main():
 
     attempt = data.get("password", data.get("pw", ""))
     if not afg_gate.passwords_match(attempt, expected):
-        respond(401, {"ok": False, "unlocked": False, "error": "wrong password"})
+        respond(200, {"ok": False, "unlocked": False, "error": "wrong password"})
         return
 
     token = afg_gate.make_unlock_token(expected)
